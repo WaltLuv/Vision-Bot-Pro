@@ -1,6 +1,6 @@
 {
-  "name": "Your AI employee",
-  "short_name": "Employee",
+  "name": "Vision-Bot-Pro",
+  "short_name": "VisionBot Pro",
   "description": "See, talk, and hand over work from your phone.",
   "start_url": "/",
   "scope": "/",

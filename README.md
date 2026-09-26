@@ -1,8 +1,9 @@
-# VisionClaw
+# Vision-Bot-Pro
 
-![VisionClaw](assets/teaserimage.png)
+![Vision-Bot-Pro](assets/teaserimage.png)
 
-**An AI employee in your phone.** Point your camera at something and talk. It
+**An AI employee in your phone — powered by Gemini Live + Claude Sonnet 5.**
+Point your camera at something and talk. It
 sees what you show it, hears you and answers out loud -- and it takes work off
 your hands: researching, using websites (you can watch it and take the browser
 over), comparing prices across suppliers, texting and calling people, and
