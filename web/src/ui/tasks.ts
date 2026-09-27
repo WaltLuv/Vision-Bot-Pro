@@ -1,6 +1,6 @@
 import {api, type Run} from '../api';
 import {h} from '../dom';
-import {canResume, isTerminal, relativeTime, runArtifacts, sortRuns, STATUS_LABEL, unreconciledActions} from '../store';
+import {canResume, isTerminal, relativeTime, runArtifacts, runTitle, sortRuns, STATUS_LABEL, unreconciledActions} from '../store';
 import {materialSection} from './offers';
 import type {Ctx} from './ctx';
 
@@ -15,7 +15,7 @@ function taskCard(ctx: Ctx, run: Run): HTMLElement {
   const stuck = unreconciledActions(ctx.state.action, run.id);
   return h('section', {class: 'card'},
     h('p', {class: 'eyebrow', text: `${STATUS_LABEL[run.status]} · ${relativeTime(run.completedAt ?? run.createdAt)}`}),
-    h('h3', {text: run.task}),
+    h('h3', {text: runTitle(run)}),
     run.result ? h('p', {class: 'result-text', text: run.result}) : null,
     run.error ? h('p', {class: 'note', text: run.error}) : null,
     stuck.length ? reconcilePanel(ctx, stuck[0]!.id) : null,
@@ -37,7 +37,7 @@ function taskCard(ctx: Ctx, run: Run): HTMLElement {
 // It is never retried automatically; the person states what actually happened
 // and that statement is stored as the evidence.
 function reconcilePanel(ctx: Ctx, actionId: string): HTMLElement {
-  const field = h('textarea', {class: 'composer', rows: 2, placeholder: 'What actually happened? (at least 10 characters)', 'aria-label': 'What actually happened'});
+  const field = h('textarea', {class: 'composer', rows: 2, placeholder: 'What actually happened? (at least 10 characters)', 'aria-label': 'What actually happened', 'data-key': `reconcile:${actionId}`});
   return h('div', {class: 'reconcile'},
     h('p', {class: 'note', text: 'This task started something outside the server and the result is unknown. Check it, then record what happened before resuming.'}),
     field,

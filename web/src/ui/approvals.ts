@@ -1,4 +1,4 @@
-import {api, type Approval} from '../api';
+import {api, type Approval, type Contact} from '../api';
 import {h} from '../dom';
 import {approvalRows, EFFECT_LABEL, NO_STANDING_APPROVAL} from '../store';
 
@@ -6,10 +6,10 @@ import {approvalRows, EFFECT_LABEL, NO_STANDING_APPROVAL} from '../store';
 // means supplier, items, quantities and total as separate rows taken from the
 // approval's own details -- the person authorises those terms, not a summary of
 // them, and the gateway validates the decision against this same record.
-export function approvalCard(approval: Approval, after: () => void, fail: (message: string) => void) {
+export function approvalCard(approval: Approval, after: () => void, fail: (message: string) => void, contacts: Contact[] = []) {
   const financial = approval.effect === 'financial';
   const answering = approval.tool === 'ask_user';
-  const answer = answering ? h('input', {class: 'field', type: 'text', placeholder: 'Your answer', 'aria-label': 'Your answer'}) : null;
+  const answer = answering ? h('input', {class: 'field', type: 'text', placeholder: 'Your answer', 'aria-label': 'Your answer', 'data-key': `answer:${approval.id}`}) : null;
 
   const decide = async (decision: 'once' | 'deny' | 'always' | 'never') => {
     try {
@@ -20,7 +20,7 @@ export function approvalCard(approval: Approval, after: () => void, fail: (messa
     }
   };
 
-  const rows = approvalRows(approval);
+  const rows = approvalRows(approval, contacts);
   return h('section', {class: `card approval ${financial ? 'financial' : ''}`},
     h('p', {class: 'eyebrow', text: EFFECT_LABEL[approval.effect] ?? 'Needs your approval'}),
     h('h3', {text: approval.label || approval.tool}),

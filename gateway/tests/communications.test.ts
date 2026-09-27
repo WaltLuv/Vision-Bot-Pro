@@ -101,11 +101,11 @@ test('message history is readable only for your own contacts',async()=>{
 // --- webhooks -------------------------------------------------------------
 
 function harness(){
- const db=new Store(':memory:');const app=express();const queued:{owner:string;task:string;key:string}[]=[];
+ const db=new Store(':memory:');const app=express();const queued:{owner:string;task:string;key:string;title?:string}[]=[];
  // Same body handling as src/server.ts: the voice webhook verifies a signature
  // over the exact bytes, so the raw buffer has to survive JSON parsing.
  app.use(express.json({limit:'5mb',verify:(req,_res,bytes)=>{if(req.url?.startsWith('/webhooks/voice'))(req as any).rawBody=bytes;}}));
- registerCommunicationWebhooks(app,db,(owner,task,key)=>{queued.push({owner,task,key});});
+ registerCommunicationWebhooks(app,db,(owner,task,key,_conversationId,title)=>{queued.push({owner,task,key,title});});
  const server=app.listen(0);
  return {db,app,queued,server,ready:new Promise<string>(r=>server.on('listening',()=>r(`http://127.0.0.1:${(server.address() as any).port}`)))};
 }
@@ -182,4 +182,21 @@ test('a call webhook is verified, deduplicated, and rejected when its signature 
   const stale=(await retellSign(body,'retell-test-key')).replace(/^v=\d+/,`v=${Date.now()-10*60*1000}`);
   assert.equal((await post(stale)).status,403,'a signature replayed later is refused');
  }finally{h.server.close();h.db.close();delete process.env.RETELL_API_KEY;}
+});
+
+test('the follow-up work a text or a finished call starts is named for the owner, not by its instructions',async()=>{
+ const h=harness();const base=await h.ready;
+ process.env.TWILIO_AUTH_TOKEN='test-token';process.env.TWILIO_ACCOUNT_SID='AC-real';process.env.COMMUNICATION_ROUTES=JSON.stringify({'+15550002222':'a'});process.env.RETELL_API_KEY='retell-test-key';
+ try{
+  const maria=h.db.create('a','contact',{name:'Maria Lopez',phone:'+15550001111',organization:'',notes:'',blocked:false});
+  const params={MessageSid:'SMtitle001',AccountSid:'AC-real',From:'+15550001111',To:'+15550002222',Body:'Tuesday at 10 works for me.'};
+  assert.equal((await fetch(`${base}/webhooks/sms/inbound`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','x-twilio-signature':twilioSig('test-token',`${BASE}/webhooks/sms/inbound`,params)},body:form(params)})).status,200);
+  assert.equal(h.queued[0]!.title,'Text from Maria Lopez: "Tuesday at 10 works for me."');
+  assert.match(h.queued[0]!.task,/untrusted data/,'the employee still gets its instructions');
+
+  h.db.put('a','communication',{id:'c2',providerId:'call-2',channel:'voice',direction:'outbound',status:'ended',contactId:maria.id,to:'+15550001111',objective:'Confirm Tuesday'});
+  const body=JSON.stringify({event:'call_analyzed',call:{call_id:'call-2',call_status:'ended',call_analysis:{call_summary:'Confirmed.'}}});
+  assert.equal((await fetch(`${base}/webhooks/voice`,{method:'POST',headers:{'Content-Type':'application/json','x-retell-signature':await retellSign(body,'retell-test-key')},body})).status,204);
+  assert.equal(h.queued[1]!.title,'Call with Maria Lopez finished');
+ }finally{h.server.close();h.db.close();for(const k of ['TWILIO_AUTH_TOKEN','TWILIO_ACCOUNT_SID','COMMUNICATION_ROUTES','RETELL_API_KEY'])delete process.env[k];}
 });

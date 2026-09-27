@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {Store,type Row} from './db.js';
-export const executeSchema=z.object({task:z.string().trim().min(1).max(12000),context:z.object({agentId:z.string().optional(),conversationId:z.string().optional(),source:z.enum(['phone','glasses','text','workflow','webhook']).default('text'),visualDescription:z.string().max(4000).optional(),attachments:z.array(z.string()).max(8).default([]),workspace:z.string().max(100).optional()}).default({source:'text',attachments:[]})});
+export const executeSchema=z.object({task:z.string().trim().min(1).max(12000),title:z.string().trim().min(1).max(200).optional(),context:z.object({agentId:z.string().optional(),conversationId:z.string().optional(),source:z.enum(['phone','glasses','text','workflow','webhook']).default('text'),visualDescription:z.string().max(4000).optional(),attachments:z.array(z.string()).max(8).default([]),workspace:z.string().max(100).optional()}).default({source:'text',attachments:[]})});
 export const terminal=new Set(['completed','failed','cancelled']);
 export type Executor=(owner:string,run:Row,signal:AbortSignal)=>Promise<{result:string;usage?:unknown}>;
 export class RunQueue {
@@ -17,7 +17,7 @@ export class RunQueue {
   return this.db.transaction(()=>{
    const prior=this.db.sql.prepare('SELECT hash,id FROM dedupe WHERE owner=? AND key=?').get(owner,key);
    if(prior){if(prior.hash!==hash)throw Error('Request identifier already used for different work');return this.db.get(owner,'run',String(prior.id))!;}
-   const conversationId=parsed.context.conversationId??this.db.create(owner,'conversation',{title:parsed.task.slice(0,80)}).id;
+   const conversationId=parsed.context.conversationId??this.db.create(owner,'conversation',{title:(parsed.title??parsed.task).slice(0,80)}).id;
    const run=this.db.create(owner,'run',{...parsed,context:{...parsed.context,conversationId},agentId:agent?.id,conversationId,status:'queued'});
    this.db.create(owner,'message',{conversationId,runId:run.id,role:'user',text:run.task});
    this.db.sql.prepare('INSERT INTO dedupe VALUES(?,?,?,?)').run(owner,key,hash,run.id);

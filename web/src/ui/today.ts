@@ -2,7 +2,7 @@ import {api, newIdempotencyKey} from '../api';
 import {h, mount} from '../dom';
 import {cameraMessage} from '../camera';
 import type {Card} from '../realtime';
-import {activeRun, liveApprovals, relativeTime, STATUS_LABEL, canResume, unreconciledActions} from '../store';
+import {activeRun, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
 import {approvalCard} from './approvals';
 import type {Ctx} from './ctx';
 import {Dictation, dictationMessage, dictationSupported} from '../voice';
@@ -108,9 +108,10 @@ export function today(ctx: Ctx): HTMLElement {
   });
 
   return h('div', {class: 'screen'},
+    // A decision the employee is waiting on comes first: nothing moves until it is made.
+    ...approvals.map(a => approvalCard(a, () => void ctx.refresh(), m => ctx.toast(m), ctx.state.contact)),
     cameraSection(ctx, send),
     ...ctx.cards.map(cardView),
-    ...approvals.map(a => approvalCard(a, () => void ctx.refresh(), m => ctx.toast(m))),
     browsingCard(ctx),
     run ? runPanel(ctx, run) : null,
     transcriptPanel(ctx),
@@ -208,7 +209,7 @@ function runPanel(ctx: Ctx, run: ReturnType<typeof activeRun> & {}): HTMLElement
   const blocked = unreconciledActions(ctx.state.action, run.id);
   return h('section', {class: 'card'},
     h('p', {class: 'eyebrow', text: STATUS_LABEL[run.status]}),
-    h('h3', {text: run.task}),
+    h('h3', {text: runTitle(run)}),
     run.error ? h('p', {class: 'note', text: run.error}) : null,
     blocked.length ? h('p', {class: 'note', text: 'An external action needs checking before this can continue. Open it under Tasks.'}) : null,
     h('div', {class: 'row'},
@@ -250,7 +251,9 @@ function recent(ctx: Ctx): HTMLElement | null {
   return h('section', {class: 'card'},
     h('h3', {text: 'Recently finished'}),
     ...done.map(r => h('div', {class: 'row-item'},
-      h('p', {class: 'task', text: r.task}),
+      h('p', {class: 'task', text: runTitle(r)}),
+      // The answer belongs where the question was asked, not only under Tasks.
+      r.result ? h('p', {class: 'result-text', text: r.result.length > 280 ? `${r.result.slice(0, 280)}…` : r.result}) : null,
       h('p', {class: 'note', text: `${relativeTime(r.completedAt ?? r.createdAt)} · ${STATUS_LABEL[r.status]}`}))),
     h('button', {class: 'ghost', onclick: () => ctx.go('tasks')}, 'See all tasks'),
   );

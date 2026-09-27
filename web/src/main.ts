@@ -2,6 +2,7 @@ import './styles.css';
 import {api, ApiError, setCsrf, subscribe, type Connections, type State} from './api';
 import {Camera} from './camera';
 import {h, mount} from './dom';
+import {rebuildKeepingEdits, trackEdits} from './fields';
 import {applyCard, applyTranscript, dismissCard, emptyState} from './store';
 import {RealtimeSession, type Card, type SessionState, type TranscriptEntry} from './realtime';
 import type {Ctx, Tab} from './ui/ctx';
@@ -14,6 +15,7 @@ import {camera} from './ui/camera';
 import {updateLive, watchBrowser} from './ui/live';
 
 const root = document.getElementById('app')!;
+trackEdits(root);
 let stopStream: (() => void) | null = null;
 
 const ctx: Ctx = {
@@ -78,7 +80,7 @@ function shell(): HTMLElement {
 }
 
 function render() {
-  mount(root, shell());
+  rebuildKeepingEdits(root, ctx.tab, () => mount(root, shell()));
   updateLive(ctx);
 }
 

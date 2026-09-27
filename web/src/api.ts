@@ -12,7 +12,7 @@ export type RunStatus = 'queued' | 'working' | 'verifying' | 'completed' | 'fail
 export type Source = 'phone' | 'glasses' | 'text' | 'workflow' | 'webhook';
 
 export interface Row {id: string; [key: string]: any}
-export interface Run extends Row {task: string; status: RunStatus; result?: string; error?: string; recovered?: boolean; conversationId?: string; createdAt?: string; completedAt?: string; context?: {source?: Source; attachments?: string[]; visualDescription?: string}}
+export interface Run extends Row {task: string; title?: string; status: RunStatus; result?: string; error?: string; recovered?: boolean; conversationId?: string; createdAt?: string; completedAt?: string; context?: {source?: Source; attachments?: string[]; visualDescription?: string}}
 export interface Approval extends Row {runId: string; tool: string; label: string; effect: Effect; details: Record<string, unknown>; status: 'pending' | 'approved' | 'denied'; expiresAt: number}
 export interface Artifact extends Row {runId?: string; kind: string; name: string; mime?: string; text?: string}
 export interface Agent extends Row {name: string; title: string; instructions: string; runtime: 'hermes' | 'anthropic' | 'claude'; skills: string[]; avatar?: string; provider?: string; model?: string}

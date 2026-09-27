@@ -135,7 +135,7 @@ function userFromRequest(req: express.Request, explicitToken?: string): string |
 const validGrant=(owner:string,hash:string)=>[...config.tokens].some(([t,u])=>u===owner&&tokenHash(t)===hash)||(lookupTokenHash(hash)?.userId===owner&&lookupTokenHash(hash)?.status==='approved');
 const employee=installEmployee(app,userFromRequest,validGrant);
 installLegacyTasks(app,employee,userFromRequest);
-registerCommunicationWebhooks(app,employee.db,(owner,task,key,conversationId)=>{employee.q.create(owner,{task,context:{source:'webhook',conversationId}},key);void employee.q.tick();});
+registerCommunicationWebhooks(app,employee.db,(owner,task,key,conversationId,title)=>{employee.q.create(owner,{task,title,context:{source:'webhook',conversationId}},key);void employee.q.tick();});
 app.use((req,res,next)=>{if(req.path==='/'||req.path.startsWith('/assets/'))res.set('Content-Security-Policy',appContentSecurityPolicy());next();});
 // The phone client. WEB_DIST_DIR overrides it; the default mirrors the repo
 // layout, which the image reproduces so this resolves the same way in both. A

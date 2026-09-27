@@ -3,7 +3,7 @@
 // judgement (is this approval still actionable? is this run finished?) cannot
 // drift between two screens.
 
-import type {AccessMethod, Action, Approval, Artifact, Connections, Fulfillment, Offer, Run, RunStatus, State, SupplierReport, SupplierStatus} from './api';
+import type {AccessMethod, Action, Approval, Artifact, Connections, Contact, Fulfillment, Offer, Run, RunStatus, State, SupplierReport, SupplierStatus} from './api';
 import type {Card, TranscriptEntry} from './realtime';
 
 export const TERMINAL: ReadonlySet<RunStatus> = new Set(['completed', 'failed', 'cancelled']);
@@ -80,12 +80,24 @@ export const runArtifacts = (artifacts: Artifact[], runId: string) => artifacts.
  * summarised -- a person approving a purchase sees supplier, items, quantities
  * and total, not a sentence about them.
  */
-export function approvalRows(approval: Approval): {label: string; value: string}[] {
+const ROW_LABEL: Record<string, string> = {body: 'Message', objective: 'What the call is for'};
+
+export function approvalRows(approval: Approval, contacts: Contact[] = []): {label: string; value: string}[] {
   const details = approval.details ?? {};
   return Object.entries(details)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => ({label: humanise(k), value: typeof v === 'object' ? JSON.stringify(v, null, 1) : String(v)}));
+    .filter(([k, v]) => v !== undefined && v !== null && v !== '' && !(k === 'contactId' && 'to' in details))
+    .map(([k, v]) => {
+      // A message or call names who it reaches, and the exact number it will use.
+      if (k === 'to' && typeof details.contactId === 'string') {
+        const who = contacts.find(c => c.id === details.contactId);
+        return {label: 'To', value: who ? `${who.name} · ${String(v)}` : `${String(v)} · not in your contacts`};
+      }
+      return {label: ROW_LABEL[k] ?? humanise(k), value: typeof v === 'object' ? JSON.stringify(v, null, 1) : String(v)};
+    });
 }
+
+/** What a task is called on screen: its own title when the server gave it one, else what was asked. */
+export const runTitle = (run: Run) => run.title || run.task;
 
 export function humanise(key: string): string {
   const spaced = key.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
