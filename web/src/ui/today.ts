@@ -17,6 +17,10 @@ let dictation: Dictation | null = null;
 let spoken = '';
 let listening = false;
 let listeningNote = '';
+// What is typed outlives any one render the same way. A rebuilt box used to
+// come back empty, so text typed while an update landed was lost and Send then
+// sent nothing at all.
+let draft = '';
 
 const preview = document.createElement('video');
 preview.muted = true; preview.playsInline = true; preview.autoplay = true;
@@ -59,6 +63,14 @@ export function today(ctx: Ctx): HTMLElement {
   };
 
   const composer = h('textarea', {class: 'composer', rows: 2, placeholder: 'Ask or assign something…', 'aria-label': 'Ask or assign something'});
+  composer.value = draft;
+  composer.addEventListener('input', () => {draft = composer.value;});
+  // If the box being rebuilt had the cursor, the new one takes it back, at the same place.
+  const typing = document.activeElement instanceof HTMLTextAreaElement && document.activeElement.classList.contains('composer') ? document.activeElement : null;
+  if (typing) {
+    const [start, end] = [typing.selectionStart, typing.selectionEnd];
+    queueMicrotask(() => {if (composer.isConnected) {composer.focus(); composer.setSelectionRange(start, end);}});
+  }
   const heard = h('p', {class: 'note'});
   // Speaking fills the same box typing does, and you read it before it is sent.
   // Mishearing "Unit 12" as "Unit 20" and acting on it unasked is worse than a
@@ -74,6 +86,7 @@ export function today(ctx: Ctx): HTMLElement {
         // listening began.
         const live = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask or assign something"]');
         if (live) live.value = text;
+        draft = text;
       },
       onState: (state, detail) => {
         listening = state === 'listening';
@@ -86,11 +99,12 @@ export function today(ctx: Ctx): HTMLElement {
       else {spoken = composer.value; dictation!.start(composer.value);}
     });
   }
-  const submit = h('button', {class: 'primary', disabled: ctx.busy, onclick: () => {dictation?.stop(); const v = composer.value; composer.value = ''; spoken = ''; listeningNote = ''; heard.textContent = ''; void send(v);}}, ctx.busy ? 'Sending…' : 'Send');
+  const submit = h('button', {class: 'primary', disabled: ctx.busy, onclick: () => {dictation?.stop(); if (ctx.busy || !composer.value.trim()) return; const v = composer.value; composer.value = ''; draft = ''; spoken = ''; listeningNote = ''; heard.textContent = ''; void send(v);}}, ctx.busy ? 'Sending…' : 'Send');
   composer.addEventListener('keydown', e => {
     // Enter sends, Shift+Enter makes a new line -- on a phone keyboard the
     // send key is the fast path and a newline is the rare one.
-    if (e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); const v = composer.value; composer.value = ''; void send(v);}
+    // Busy or empty, Enter keeps what is typed rather than clearing it unsent.
+    if (e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); if (ctx.busy || !composer.value.trim()) return; const v = composer.value; composer.value = ''; draft = ''; void send(v);}
   });
 
   return h('div', {class: 'screen'},

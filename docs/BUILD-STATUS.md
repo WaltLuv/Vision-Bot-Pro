@@ -16,7 +16,7 @@ Exact commands, results and per-criterion labels are in `docs/TESTING.md`.
 - Gateway typecheck clean; **128 of 129 tests pass, 1 skipped**. The skip is the real-binary Claude Code test, which refuses to run
   inside a Claude Code cloud session with a network; offline it ran, and its
   startup contract passed.
-- Web client typechecks and builds; **102/102 tests pass** across 9 files.
+- Web client typechecks and builds; **107/107 tests pass** across 10 files.
 - **119/119 end-to-end checks pass** against a real gateway in a real browser at a
   phone viewport, with a synthetic camera and microphone and two configured
   suppliers, one of which is deliberately down.
@@ -137,6 +137,11 @@ Every mapping is overridable per deployment.
 
 ## Fixed in this pass
 
+- **Typing could be lost.** The phone's text box was rebuilt empty whenever an
+  update arrived, so a task being typed as one landed vanished and Send quietly
+  sent nothing; Enter while the app was busy cleared the text unsent. It now
+  keeps the text, the cursor and focus. This was the intermittent end-to-end
+  failure earlier put down to machine load.
 - **The Vision-Bot-Pro name, everywhere in the app.** The rebrand named the app
   and its page; the sign-in screen, home-screen title and new owners' employee
   now carry the name too. Server service names and internal package names keep

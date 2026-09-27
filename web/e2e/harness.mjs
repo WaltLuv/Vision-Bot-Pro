@@ -228,7 +228,7 @@ export async function startStack({port, tokens}) {
     base,
     browserUse,
     browserbase,
-    tail: () => log.split('\n').slice(-6).join('\n'),
+    tail: (lines = 6) => log.split('\n').slice(-lines).join('\n'),
     async stop() {
       gateway.kill('SIGKILL');
       model.server.close();

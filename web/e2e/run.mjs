@@ -9,7 +9,7 @@
 //
 // Requires: web/dist built, gateway deps installed, and HERMES_CHECKOUT +
 // HERMES_PYTHON pointing at an installed official Hermes runtime.
-import {launchBrowser, openPhone, reporter, startStack} from './harness.mjs';
+import {launchBrowser, openPhone, reporter, startStack, state} from './harness.mjs';
 import * as scenario from './scenarios.mjs';
 
 if (!process.env.HERMES_CHECKOUT) {
@@ -22,13 +22,13 @@ const TOKEN = 'e2e-access-code';
 const OTHER_TOKEN = 'e2e-second-access-code';
 
 const {results, check} = reporter();
-let stack, browser;
+let stack, browser, phone;
 
 try {
   stack = await startStack({port: PORT, tokens: `${TOKEN}:alice,${OTHER_TOKEN}:bob`});
   browser = await launchBrowser({livePort: stack.browserUse.livePort});
 
-  const phone = await openPhone(browser, stack.base);
+  phone = await openPhone(browser, stack.base);
   const ctx = {...phone, browser, base: stack.base, check, token: TOKEN, otherToken: OTHER_TOKEN, browserUse: stack.browserUse, browserbase: stack.browserbase};
 
   // Order matters: each scenario builds on the sign-in and the records the
@@ -53,6 +53,10 @@ try {
   console.log(`\n[server log tail]\n${stack.tail()}`);
 } catch (error) {
   check('the run completed without an unexpected error', false, String(error?.message ?? error));
+  // A timeout says what did not happen; these say why.
+  const runs = phone ? (await state(phone.page).catch(() => null))?.run : null;
+  if (runs) console.log('\n[tasks at failure]\n' + runs.map(r => `${r.status.padEnd(10)} ${r.runtime ?? '-'} ${r.task.slice(0, 60)}`).join('\n'));
+  if (stack) console.log(`\n[server log tail]\n${stack.tail(80)}`);
 } finally {
   await browser?.close().catch(() => {});
   await stack?.stop();

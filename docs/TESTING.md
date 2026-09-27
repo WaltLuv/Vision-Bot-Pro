@@ -7,7 +7,7 @@ credential this environment does not have, that is stated rather than implied.
 
 ```bash
 cd gateway && npm ci && npx tsc --noEmit && npm test     # 129 tests
-cd web     && npm ci && npm run verify                   # build + 102 tests
+cd web     && npm ci && npm run verify                   # build + 107 tests
 ```
 
 `npm run verify` in `web/` builds first on purpose: the packaging tests read the
@@ -346,6 +346,17 @@ an idle machine passed 119/119. The two run under load stopped on a 150s wait:
 once for a long task to start, right after the whole gateway suite; once for
 supplier search, while installer builds ran alongside.
 
+**Root cause, found later: a bug in the phone app, not load.** The long-task
+timeout recurred on an idle machine, and a failed run now prints every task's
+status and the gateway log: the task had never been created. The text box was
+rebuilt empty whenever the screen re-rendered, and the first background refresh
+after sign-in could land between typing and Send, so Send quietly sent
+nothing. Load only made that more likely by slowing the refresh. The supplier
+timeout has the same shape, a typed task that never started, and very likely
+the same cause. The box now keeps its text, cursor and focus across re-renders,
+and Enter while busy keeps the text instead of discarding it
+(`tests/today.test.ts`; 3 of its 5 checks fail against the old code).
+
 ## Current results
 
 | Suite | Command | Result |
@@ -353,7 +364,7 @@ supplier search, while installer builds ran alongside.
 | Gateway typecheck | `npx tsc --noEmit` | clean |
 | Gateway tests | `npm test` | 128 passed, 0 failed, 1 skipped (129 tests); the skip is the real Claude Code test, for the reason above |
 | Web typecheck + build | `npm run build` | clean; entry 38.8 kB, 13.0 kB gzipped |
-| Web tests | `npm test` | 102 passed (9 files) |
+| Web tests | `npm test` | 107 passed (10 files) |
 | End-to-end | `npm run e2e` | 119 passed |
 
 `npm run lint` in `gateway/` (prettier --check) fails on 38 files (the two
