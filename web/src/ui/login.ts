@@ -30,7 +30,7 @@ export function login(onDone: (owner: string) => void): HTMLElement {
 
   return h('div', {class: 'screen centered'},
     h('section', {class: 'card'},
-      h('h1', {class: 'brand', text: 'Your AI employee'}),
+      h('h1', {class: 'brand', text: 'Vision-Bot-Pro'}),
       h('p', {class: 'note', text: 'Sign in with the access code for this server.'}),
       field, message,
       h('div', {class: 'row'}, button),
