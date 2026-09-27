@@ -1,5 +1,8 @@
 # Vision-Bot-Pro
 
+*Formerly VisionClaw. Server service names and internal package names keep
+the old name, so existing installs are unaffected.*
+
 ![Vision-Bot-Pro](assets/teaserimage.png)
 
 **An AI employee in your phone — powered by Gemini Live + Claude Sonnet 5.**
@@ -49,6 +52,39 @@ employee, memory and tasks.
   estate and property management are optional skills, not the product.
 
 ## Get it running
+
+### On your computer, with your Claude subscription
+
+```bash
+git clone https://github.com/WaltLuv/Vision-Bot-Pro.git && cd Vision-Bot-Pro
+bash deploy/local.sh
+```
+
+It needs Node 22 or newer and [Claude Code](https://code.claude.com/docs/en/quickstart),
+and no root. It is written for macOS and Linux; so far it has been run on Linux. The first run has you sign in to Claude Code
+with your Claude subscription -- Anthropic's own sign-in, which Vision-Bot-Pro never
+sees -- then writes private settings to `gateway/.env`, builds the app and
+starts it. Open `http://127.0.0.1:8788` on the same computer and type the
+access code it prints. Ctrl-C stops it; the same command starts it again, in
+seconds, with the same code.
+
+**What your subscription covers.** Every task runs through Claude Code with the
+same governed tools and approvals as any other engine: reading the web, memory,
+documents, contacts and workflows, plus -- once you add their keys to
+`gateway/.env` -- text messages, calls, suppliers, a browser you can watch
+(`BROWSERBASE_API_KEY`) and MCP servers. A subscription is for one person, so
+only your own account's tasks run on it.
+
+**What it does not.** The Gmail, Google Calendar, Slack and Notion connections
+belong to Anthropic's Managed Agents, which is an API product: they need an
+`ANTHROPIC_API_KEY` and `AGENT_RUNTIME=anthropic`, not a subscription.
+
+It listens on this computer only (`HOST=127.0.0.1`). The phone's camera and
+microphone need https, so to use it from your phone, give it a private https
+address such as Tailscale Serve pointed at port 8788. Voice also needs LiveKit,
+a Gemini key and the `agent/` worker, which the local setup does not start yet.
+
+### On a server
 
 On a Linux VM you control, run `sudo bash deploy/install.sh`. It asks only for
 what it cannot know, writes a private `.env` and installs the services. Then

@@ -31,7 +31,8 @@ different engine on purpose.
   install Claude Code for the user the gateway runs as
   (https://code.claude.com/docs/en/quickstart), then sign it in once, yourself:
   `sudo -u <service user> -H claude auth login`. `deploy/install.sh` offers to
-  do this. Set `CLAUDE_CODE_OWNER` to your own account (`owner` for an
+  do this. On your own computer, `bash deploy/local.sh` sets all of it up in
+  one step. Set `CLAUDE_CODE_OWNER` to your own account (`owner` for an
   access-code install) — only that account's tasks run on it.
 
   Why it is built this way: Anthropic allows "an end user signing in to the

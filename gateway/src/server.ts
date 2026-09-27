@@ -440,7 +440,8 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
-httpServer.listen(config.port, () => {
-  console.log(`[gateway] listening on :${config.port}`);
+// HOST=127.0.0.1 keeps a laptop install off the network it is on; unset, every interface.
+httpServer.listen(config.port, process.env.HOST || undefined, () => {
+  console.log(`[gateway] listening on ${process.env.HOST || ""}:${config.port}`);
   console.log(`[gateway] app settings -> host: http://<this-host>  port: ${config.port}`);
 });

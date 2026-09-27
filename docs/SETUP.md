@@ -96,7 +96,11 @@ Anthropic key against Anthropic, and asks Claude Code whether it is signed in. O
 capability credentials, and what stays unavailable without each, are listed in
 `docs/OWNER-ACTIONS.md`.
 
-Useful extras: `EMPLOYEE_DATA_DIR`, `WEB_DIST_DIR`, `RUN_CAPACITY` (1-99,
+On your own computer, `bash deploy/local.sh` does all of this for the Claude
+Code runtime: it writes `gateway/.env` with generated secrets, `AGENT_RUNTIME=claude`,
+`CLAUDE_CODE_OWNER` and `HOST=127.0.0.1`, builds, and starts the gateway.
+
+Useful extras: `HOST` (address to listen on), `EMPLOYEE_DATA_DIR`, `WEB_DIST_DIR`, `RUN_CAPACITY` (1-99,
 default 2), `AGENT_RUNTIME` (`anthropic`, `hermes` or `claude`),
 `MANAGED_READ_TOOLS`, `CLAUDE_CODE_BIN`, `CLAUDE_CODE_MODEL`,
 `BROWSERBASE_API_KEY` (a browser the employee drives and you can take over),

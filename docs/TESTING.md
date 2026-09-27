@@ -245,6 +245,37 @@ it.
 policy blocks `api.browserbase.com`; on the server, `bash deploy/doctor.sh`
 checks the key against Browserbase itself.
 
+## Local run (`deploy/local.sh`)
+
+Run for real on Linux, from a fresh clone, with no terminal attached, with a
+stand-in `claude` on the PATH: the same stand-in the Claude Code tests use,
+which speaks Claude Code's protocol to the gateway's real bridge. This
+session's own Claude Code login was never used. Established:
+
+- one command checks Node and Claude Code, confirms Claude Code is signed in
+  (asking it with the same environment the app will give it), writes
+  `gateway/.env` (mode 600) with a generated access code and secrets,
+  `AGENT_RUNTIME=claude`, `CLAUDE_CODE_OWNER` and `HOST=127.0.0.1`, keeps
+  `data/` private (700), builds, starts the gateway and waits for it to answer;
+- the gateway listens on 127.0.0.1 only (checked in `/proc/net/tcp`);
+- in Chromium at phone size, the page carries the Vision-Bot-Pro name, the printed code
+  signs in, and a typed task runs on the Claude Code runtime: Claude Code was
+  started headless with the gateway's MCP config, and its two tool calls went
+  through the governed tools, leaving receipts, a document and a saved memory.
+  Settings says "Ready: Claude Code, signed in with your Claude subscription";
+  there were no page errors;
+- Ctrl-C (SIGTERM) stops it and frees the port; the next start skips
+  reinstalling, takes seconds and keeps the same access code;
+- when Claude Code is not signed in and there is no terminal to sign in from,
+  it says what to run and starts nothing.
+
+With the real binary (Claude Code 2.1.283), `tests/claude.test.ts` run offline
+(`unshare -rn`) passes its startup contract, as above.
+
+**Not verified here**: a real subscription login doing a real task (it runs on
+the owner's machine), macOS (written for its stock bash 3.2 and BSD tools, not
+run), and reaching it from a phone.
+
 ## Installer and doctor
 
 `deploy/install.sh` and `deploy/doctor.sh` were run for real in a fresh clone,

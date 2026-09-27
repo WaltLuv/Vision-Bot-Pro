@@ -101,6 +101,7 @@ used. Per-criterion detail and how to reproduce each suite is in
 | 5 | Hermes selection through the official runtime | IMPLEMENTED + VERIFIED |
 | 5a | Anthropic Managed Agents runtime, same governance | IMPLEMENTED + VERIFIED against a protocol fixture; live Anthropic account BLOCKED ON OWNER CREDENTIAL |
 | 5c | Claude Code on the owner's own subscription, same governance | IMPLEMENTED + VERIFIED against a stand-in CLI through the real bridge; startup contract VERIFIED with the real binary offline; the full loop with the real binary and a real login is for the server (`npm test -- tests/claude.test.ts`, then `deploy/doctor.sh --live`) |
+| 5d | Run it on your own computer on your Claude subscription (`deploy/local.sh`) | IMPLEMENTED + VERIFIED on Linux from a fresh clone: one command sets up, builds and starts it on 127.0.0.1 only, and a task runs through the real app, gateway and Claude Code bridge to governed tools, with a stand-in Claude Code CLI; the real binary's startup contract VERIFIED offline. The full loop with a real subscription login runs on the owner's machine. macOS written for but not run here |
 | 13 | Watch the employee browse and take the browser over | IMPLEMENTED + VERIFIED in a real browser against a stand-in shaped like Browser Use's v4 API (confirmed from its official SDK); that a stopped run's browser stays open for the owner is implied by Browser Use's session design but unconfirmed; live account BLOCKED ON OWNER CREDENTIAL |
 | 13a | A browser the employee drives step by step, with live view and take-over (Browserbase) | IMPLEMENTED + VERIFIED against a real Chromium over CDP and a stand-in shaped like Browserbase's API (from its official SDK), in gateway tests and end to end; code refuses purchase buttons and password/payment fields; a live Browserbase session BLOCKED ON OWNER NETWORK/CREDENTIAL (this environment cannot reach `api.browserbase.com`) |
 | 5b | Codex through a supported server-side provider path | IMPLEMENTED + BLOCKED ON OWNER CREDENTIAL — only the credential boundary is verified |
@@ -136,6 +137,14 @@ Every mapping is overridable per deployment.
 
 ## Fixed in this pass
 
+- **The Vision-Bot-Pro name, everywhere in the app.** The rebrand named the app
+  and its page; the sign-in screen, home-screen title and new owners' employee
+  now carry the name too. Server service names and internal package names keep
+  the old one, so existing installs are unaffected.
+- **No way to run it on your own computer.** `deploy/local.sh` sets it up and
+  starts it on your Claude subscription through Claude Code, with no root and
+  no domain. The gateway gained `HOST`, so a laptop install listens on the
+  computer only instead of every network it joins.
 - **The installer could not produce a working server.** `npm ci
   --omit=optional` dropped sharp's Linux binary, so the gateway crashed on
   start while the installer printed "gateway running". And with its private
