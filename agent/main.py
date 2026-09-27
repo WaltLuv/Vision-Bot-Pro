@@ -26,6 +26,8 @@ import logging
 import os
 import re
 import time
+import urllib.parse
+import urllib.request
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1241,5 +1243,18 @@ async def entrypoint(ctx: JobContext):
             logger.exception("failed to deliver reconnect note: user=%s", user_id)
 
 
+def _livekit_proxy() -> str | None:
+    """The proxy for the connection to LiveKit, honouring NO_PROXY.
+
+    livekit-agents sends that connection through HTTPS_PROXY whenever it is set,
+    even for a host NO_PROXY lists, so behind a proxy a LiveKit server on this
+    machine or network could never be reached. Model traffic is unaffected.
+    """
+    host = urllib.parse.urlparse(os.environ.get("LIVEKIT_URL", "")).hostname or ""
+    if host and urllib.request.proxy_bypass_environment(host):
+        return None
+    return os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or None
+
+
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, http_proxy=_livekit_proxy()))
