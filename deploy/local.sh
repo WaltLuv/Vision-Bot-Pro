@@ -5,7 +5,7 @@
 #     bash deploy/local.sh
 #
 # The first run sets everything up; later runs just start it. Nothing here
-# needs root. Works on macOS and Linux.
+# needs root. Written for macOS and Linux.
 #
 # Your Claude login stays with Claude Code: you sign in through Anthropic's own
 # flow, and Vision-Bot-Pro never sees, stores or forwards it. A subscription is for
@@ -45,7 +45,12 @@ for k in USER CLAUDE_CONFIG_DIR SSL_CERT_FILE SSL_CERT_DIR NODE_EXTRA_CA_CERTS H
   v="$(printenv "$k" 2>/dev/null || true)"
   if [ -n "$v" ]; then claude_env+=("$k=$v"); fi
 done
-signed_in() { env -i "${claude_env[@]}" "$CLAUDE_BIN" auth status --json 2>/dev/null | grep -q '"loggedIn": *true'; }
+# Read the whole answer first: grep -q in a pipe can make a signed-in answer look
+# like a failure under pipefail.
+signed_in() {
+  local out; out="$(env -i "${claude_env[@]}" "$CLAUDE_BIN" auth status --json 2>/dev/null || true)"
+  case "$out" in *'"loggedIn": true'*|*'"loggedIn":true'*) return 0 ;; *) return 1 ;; esac
+}
 
 if ! signed_in; then
   say "Sign in to Claude Code with your Claude subscription"
@@ -58,7 +63,7 @@ if ! signed_in; then
     exit 1
   fi
 fi
-info "Signed in: work will run on your Claude subscription"
+info "Claude Code is signed in"
 
 # --- settings -------------------------------------------------------------
 
@@ -170,9 +175,10 @@ fi
 say "Vision-Bot-Pro is running"
 printf '  Open         http://127.0.0.1:%s\n' "$PORT"
 printf '  Access code  %s\n' "$CODE"
-printf '  Work runs on your Claude subscription, through Claude Code\n'
+if [ "$RUNTIME" = claude ]; then printf '  Work runs on Claude Code, with your own login\n'
+else printf '  Work runs on %s\n' "$RUNTIME"; fi
 printf '  Logs         data/vision-bot.log\n'
 printf '  Stop         Ctrl-C\n\n'
-info "Voice, a browser you can watch and phone access are optional; README says how."
+info "A browser you can watch, phone access and voice are extras; see README."
 wait "$PID" || true
 bad "Vision-Bot-Pro stopped by itself:"; tail -n 20 "$RUNLOG" >&2; exit 1
