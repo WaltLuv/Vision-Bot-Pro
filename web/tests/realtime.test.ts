@@ -80,12 +80,22 @@ describe('event stream reconnect', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts from the beginning and reports the stream healthy', () => {
+  // The page has just loaded the current state; replaying every past event made
+  // it refetch once per event and trip the gateway's rate limit.
+  it('starts at now rather than replaying the history, and reports the stream healthy', () => {
     const status: boolean[] = [];
     subscribe(() => {}, online => status.push(online));
-    expect(opened[0]!.url).toBe('/api/events?after=0');
+    expect(opened[0]!.url).toBe('/api/events');
     opened[0]!.onopen!();
     expect(status).toEqual([true]);
+  });
+
+  it('resumes from where the gateway said "now" was, when nothing else has happened', () => {
+    subscribe(() => {}, () => {});
+    opened[0]!.onmessage!({data: JSON.stringify({seq: 41, type: 'stream.ready'}), lastEventId: '41'});
+    opened[0]!.onerror!();
+    vi.advanceTimersByTime(600);
+    expect(opened[1]!.url).toBe('/api/events?after=41');
   });
 
   it('resumes from the last event seen instead of replaying the stream', () => {

@@ -56,6 +56,8 @@ export function today(ctx: Ctx): HTMLElement {
       await api.execute(task.trim(), {source: ctx.camera.running ? 'phone' : 'text', attachments: [], ...(visual ? {visualDescription: visual} : {})}, newIdempotencyKey());
       await ctx.refresh();
     } catch (err) {
+      // It did not go through, so what was typed comes back rather than being lost.
+      if (!draft.trim()) draft = task;
       ctx.toast(err instanceof Error ? err.message : 'That task did not start.');
     } finally {
       ctx.busy = false; ctx.rerender();
@@ -190,7 +192,7 @@ function voiceRow(ctx: Ctx, _send: (task: string) => Promise<void>): HTMLElement
       : h('button', {class: 'primary', disabled: state === 'connecting', onclick: () => void start()}, state === 'connecting' ? 'Connecting…' : 'Start conversation'),
     ctx.session.live ? h('button', {class: 'ghost', onclick: async () => {await ctx.session.setMicEnabled(!ctx.session.micEnabled); ctx.rerender();}}, ctx.session.micEnabled ? 'Mute' : 'Unmute') : null,
     state === 'reconnecting' ? h('span', {class: 'pill warn', text: 'Reconnecting…'}) : null,
-    ctx.sessionDetail && !ctx.session.live ? h('span', {class: 'pill warn', text: ctx.sessionDetail}) : null,
+    ctx.sessionDetail ? h('span', {class: `pill ${ctx.session.live ? '' : 'warn'}`, text: ctx.sessionDetail}) : null,
   );
 }
 

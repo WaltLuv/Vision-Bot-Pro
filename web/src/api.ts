@@ -149,7 +149,8 @@ export type GatewayEvent =
   | {seq: number; type: 'approval.requested'; runId: string; approvalId: string; at: string}
   | {seq: number; type: 'approval.decided'; runId: string; approvalId: string; decision: string; at: string}
   | {seq: number; type: 'tool.started' | 'tool.completed' | 'tool.failed' | 'tool.permission'; runId: string; at: string; [k: string]: any}
-  | {seq: number; type: 'communication.updated'; at: string; [k: string]: any};
+  | {seq: number; type: 'communication.updated'; at: string; [k: string]: any}
+  | {seq: number; type: 'stream.ready'};
 
 /**
  * Replayable owner-scoped event stream. EventSource cannot set headers, so the
@@ -161,7 +162,8 @@ export function subscribe(onEvent: (e: GatewayEvent) => void, onStatus: (online:
   let source: EventSource | null = null, cursor = 0, retry = 0, timer: number | undefined, stopped = false;
   const open = () => {
     if (stopped) return;
-    source = new EventSource(`/api/events?after=${cursor}`, {withCredentials: true});
+    // A first connection starts at now and is told where that is; a reconnect resumes from the last event seen.
+    source = new EventSource(cursor ? `/api/events?after=${cursor}` : '/api/events', {withCredentials: true});
     source.onopen = () => {retry = 0; onStatus(true);};
     source.onmessage = ev => {
       const parsed = safeJson(ev.data) as GatewayEvent | undefined;

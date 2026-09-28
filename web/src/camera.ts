@@ -24,6 +24,13 @@ export function classifyError(err: unknown): CameraError {
 
 export class Camera {
   state: CameraState = {stream: null, facing: 'environment', error: null};
+  /**
+   * Called when the camera stops by itself -- another app took it, the OS
+   * revoked it, a call library stopped it. A stopped track keeps showing its
+   * last frame, so without this the viewfinder looked live while every photo
+   * came out black.
+   */
+  onEnded?: () => void;
 
   get track(): MediaStreamTrack | undefined {return this.state.stream?.getVideoTracks()[0];}
   get running() {return !!this.state.stream;}
@@ -49,6 +56,12 @@ export class Camera {
         audio: false,
       });
       this.state = {stream, facing, error: null};
+      // stop() does not fire "ended"; only a stop from outside the app does.
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (this.state.stream !== stream) return;
+        this.state = {...this.state, stream: null};
+        this.onEnded?.();
+      });
     } catch (err) {
       this.state = {stream: null, facing, error: classifyError(err)};
     }

@@ -79,6 +79,18 @@ describe('today: what you type survives updates', () => {
     expect(box().value).toBe('');
   });
 
+  it('gives the text back when the task did not go through', async () => {
+    execute.mockRejectedValueOnce(new Error('Too many requests. Try again in a minute.'));
+    const ctx = makeCtx();
+    render(ctx);
+    type('Compare prices for deck screws');
+    [...root().querySelectorAll('button')].find(b => b.textContent === 'Send')!.click();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    await Promise.resolve(); await Promise.resolve();
+    render(ctx);
+    expect(box().value).toBe('Compare prices for deck screws');
+  });
+
   it('keeps the text, unsent, when Enter is pressed while busy', () => {
     const ctx = makeCtx(true);
     render(ctx);

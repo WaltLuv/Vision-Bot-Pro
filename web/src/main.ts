@@ -3,6 +3,7 @@ import {api, ApiError, setCsrf, subscribe, type Connections, type State} from '.
 import {Camera} from './camera';
 import {h, mount} from './dom';
 import {rebuildKeepingEdits, trackEdits} from './fields';
+import {coalesce} from './coalesce';
 import {applyCard, applyTranscript, dismissCard, emptyState} from './store';
 import {RealtimeSession, type Card, type SessionState, type TranscriptEntry} from './realtime';
 import type {Ctx, Tab} from './ui/ctx';
@@ -33,16 +34,17 @@ const ctx: Ctx = {
   session: null as unknown as RealtimeSession,
   go(tab) {ctx.tab = tab; render();},
   watch(computerId) {watchBrowser(ctx, computerId);},
-  async refresh() {
-    // Never throws. A failed refresh leaves the last good view on screen and the
-    // event stream brings it up to date; letting it reject blanked the app.
+  // Never throws. A failed refresh leaves the last good view on screen and the
+  // event stream brings it up to date; letting it reject blanked the app. A
+  // burst of events is one fetch, not one each.
+  refresh: coalesce(async () => {
     try {
       const [state, connections] = await Promise.all([api.state(), api.connections().catch(() => ctx.connections)]);
       ctx.state = state as State;
       ctx.connections = (connections ?? null) as Connections | null;
     } catch {/* keep what is on screen */}
     render();
-  },
+  }),
   rerender: () => render(),
   toast,
   async signOut() {
@@ -93,6 +95,8 @@ function toast(message: string) {
 async function start(owner: string) {
   ctx.owner = owner;
   ctx.cameraMultiple = await ctx.camera.hasMultipleCameras();
+  // A camera that stopped by itself shows as off, with Start camera, not as a frozen frame.
+  ctx.camera.onEnded = () => {void ctx.session.unpublishCamera(); render();};
   // Show the app before its contents arrive. Waiting on the first load meant one
   // slow or refused request left you on the sign-in screen as if never signed in.
   render();

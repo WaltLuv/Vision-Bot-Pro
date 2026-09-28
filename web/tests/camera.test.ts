@@ -5,7 +5,10 @@ import {Camera, cameraMessage, classifyError} from '../src/camera';
 // which constraints it asks for, what it does with the previous stream, and how
 // it reports a failure a person has to act on.
 function fakeTrack() {
-  return {kind: 'video', enabled: true, readyState: 'live', stop: vi.fn(function (this: any) {this.readyState = 'ended';})};
+  // stop() ends the track without an "ended" event, as the spec has it; endFromOutside() is the OS or another app.
+  const events = new EventTarget();
+  return Object.assign(events, {kind: 'video', enabled: true, readyState: 'live', stop: vi.fn(function (this: any) {this.readyState = 'ended';}),
+    endFromOutside(this: any) {this.readyState = 'ended'; this.dispatchEvent(new Event('ended'));}});
 }
 function fakeStream() {
   const track = fakeTrack();
@@ -114,6 +117,31 @@ describe('freezing and stopping', () => {
     expect(made[0]!.track.stop).toHaveBeenCalled();
     expect(cam.running).toBe(false);
     expect(cam.state.stream).toBeNull();
+  });
+
+  // A stopped track keeps showing its last frame: without noticing, the viewfinder
+  // looked live while every photo came out black.
+  it('reports itself off when the camera is stopped from outside the app', async () => {
+    const {made} = install();
+    const cam = new Camera();
+    const ended = vi.fn();
+    cam.onEnded = ended;
+    await cam.start();
+    made[0]!.track.endFromOutside();
+    expect(cam.running).toBe(false);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report a camera it has since replaced', async () => {
+    const {made} = install();
+    const cam = new Camera();
+    const ended = vi.fn();
+    cam.onEnded = ended;
+    await cam.start();
+    await cam.flip();
+    made[0]!.track.endFromOutside();
+    expect(cam.running).toBe(true);
+    expect(ended).not.toHaveBeenCalled();
   });
 
   it('is safe to stop when it never started', () => {

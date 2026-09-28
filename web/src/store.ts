@@ -82,8 +82,31 @@ export const runArtifacts = (artifacts: Artifact[], runId: string) => artifacts.
  */
 const ROW_LABEL: Record<string, string> = {body: 'Message', objective: 'What the call is for'};
 
+/**
+ * An exact supplier quote, as the terms a person authorises: each item with its
+ * quantity and price, every charge, the total, how it arrives, and how long the
+ * price holds. Money is shown as money; internal ids are left out.
+ */
+export function purchaseRows(d: Record<string, any>): {label: string; value: string}[] {
+  const currency = String(d.currency ?? 'USD'), cash = (n: unknown) => money(Number(n), currency);
+  const rows: {label: string; value: string}[] = [];
+  if (d.supplier) rows.push({label: 'Supplier', value: String(d.supplier)});
+  for (const item of d.items as {name?: string; sku?: string; quantity: number; unitPrice: number}[])
+    rows.push({label: 'Item', value: `${item.quantity} × ${item.name ?? item.sku}, ${cash(item.unitPrice)} each`});
+  for (const [key, label] of [['subtotal', 'Subtotal'], ['tax', 'Tax'], ['fees', 'Fees'], ['delivery', 'Delivery']] as const)
+    if (typeof d[key] === 'number') rows.push({label, value: cash(d[key])});
+  rows.push({label: 'Total', value: `${cash(d.total)} ${currency}`});
+  if (d.fulfillment) rows.push({label: 'How you get it', value: String(d.fulfillment)});
+  if (d.deliveryAddress) rows.push({label: 'Where', value: String(d.deliveryAddress)});
+  const until = Date.parse(String(d.expiresAt ?? ''));
+  if (Number.isFinite(until)) rows.push({label: 'Price held until', value: new Date(until).toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit'})});
+  if (d.quoteId) rows.push({label: 'Quote', value: String(d.quoteId)});
+  return rows;
+}
+
 export function approvalRows(approval: Approval, contacts: Contact[] = []): {label: string; value: string}[] {
   const details = approval.details ?? {};
+  if (approval.effect === 'financial' && Array.isArray(details.items) && typeof details.total === 'number') return purchaseRows(details);
   return Object.entries(details)
     .filter(([k, v]) => v !== undefined && v !== null && v !== '' && !(k === 'contactId' && 'to' in details))
     .map(([k, v]) => {
@@ -171,7 +194,8 @@ export const money = (amount: number, currency: string) => {
 export function fulfillmentLabel(f: Fulfillment | undefined, channel: 'Pickup' | 'Delivery'): string {
   if (!f || f.available === null) return `${channel}: not reported`;
   if (!f.available) return `${channel}: not available`;
-  return [`${channel}`, f.location, f.eta].filter(Boolean).join(' · ');
+  // Available with no place or date given still says so, rather than a bare "Delivery".
+  return f.location || f.eta ? [channel, f.location, f.eta].filter(Boolean).join(' · ') : `${channel}: available`;
 }
 
 export const MATCH_LABEL: Record<Offer['matchQuality'], string> = {

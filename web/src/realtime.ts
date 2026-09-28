@@ -11,6 +11,8 @@ import {api} from './api';
 // a phone to the app shell; everything else here works without it.
 type LiveKit = typeof import('livekit-client');
 let lk: LiveKit | null = null;
+/** How long a started conversation waits for the employee's voice to join. */
+export const EMPLOYEE_JOIN_MS = 20_000;
 const loadLiveKit = async (): Promise<LiveKit> => (lk ??= await import('livekit-client'));
 
 export type SessionState = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'ended';
@@ -83,12 +85,35 @@ export class RealtimeSession {
     try {
       await room.connect(ticket.url, ticket.token);
       await room.localParticipant.setMicrophoneEnabled(true);
-      this.set('live');
+      if (room.remoteParticipants.size) this.set('live');
+      else this.awaitEmployee(room);
     } catch (err) {
       await this.disconnect();
       this.set('ended', 'The conversation could not connect. Check your network and try again.');
       throw err;
     }
+  }
+
+  /**
+   * Being in the room is not talking to anyone: the employee's voice is a
+   * separate worker that joins after. Until it does, say so; if it never does,
+   * end the call and say why, instead of leaving the owner talking to no one.
+   */
+  private awaitEmployee(room: Room) {
+    const {RoomEvent} = lk!;
+    this.set('live', 'Waiting for your employee to join…');
+    const joined = () => {
+      clearTimeout(timer);
+      room.off(RoomEvent.ParticipantConnected, joined);
+      if (this.room === room) this.set('live');
+    };
+    const timer = setTimeout(async () => {
+      room.off(RoomEvent.ParticipantConnected, joined);
+      if (this.room !== room || room.remoteParticipants.size) return;
+      await this.disconnect();
+      this.set('ended', "Your employee didn't join the conversation. Voice isn't running on the server right now; typing still works.");
+    }, EMPLOYEE_JOIN_MS);
+    room.on(RoomEvent.ParticipantConnected, joined);
   }
 
   private wire(room: Room) {
@@ -151,10 +176,16 @@ export class RealtimeSession {
   }
 
   async disconnect() {
-    const room = this.room;
+    const room = this.room, camera = this.cameraTrack;
     this.room = null;
     this.cameraTrack = null;
-    if (room) await room.disconnect();
+    if (room) {
+      // Leaving a room stops every track still published in it. The camera is
+      // the preview's, so it is taken out first and left running; the
+      // microphone, which only this call opened, is stopped with the room.
+      if (camera) await room.localParticipant.unpublishTrack(camera, false).catch(() => {});
+      await room.disconnect();
+    }
     this.set('ended');
   }
 }

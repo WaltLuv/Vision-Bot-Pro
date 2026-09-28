@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {Action, Approval, Run} from '../src/api';
-import {activeRun, approvalRows, canResume, isTerminal, liveApprovals, NO_STANDING_APPROVAL, relativeTime, runTitle, sortRuns, unreconciledActions} from '../src/store';
+import {activeRun, approvalRows, canResume, purchaseRows, isTerminal, liveApprovals, NO_STANDING_APPROVAL, relativeTime, runTitle, sortRuns, unreconciledActions} from '../src/store';
 
 const run = (over: Partial<Run> = {}): Run => ({id: 'r1', task: 'Do a thing', status: 'queued', ...over});
 const approval = (over: Partial<Approval> = {}): Approval => ({
@@ -85,6 +85,28 @@ describe('approvals', () => {
   it('says so when the person a message goes to is not in the contacts', () => {
     const rows = approvalRows(approval({tool: 'phone_call', details: {contactId: 'gone', to: '+15550142233', objective: 'Confirm Tuesday'}}), []);
     expect(rows).toEqual([{label: 'To', value: '+15550142233 · not in your contacts'}, {label: 'What the call is for', value: 'Confirm Tuesday'}]);
+  });
+
+  // Spending is authorised on these exact terms, so they read as money and items,
+  // not as the quote's raw data.
+  it('shows a supplier quote as items, charges, total, fulfilment and how long the price holds', () => {
+    const quote = {supplier: 'Riverside Building Supply', quoteId: 'Q-23a094', items: [{sku: 'RS-3DS5', name: '3 in. Deck Screws (5 lb box)', quantity: 2, unitPrice: 34.95}],
+      subtotal: 69.9, tax: 5.07, fees: 0, delivery: 0, total: 74.97, currency: 'USD', fulfillment: 'Pickup at the Riverside yard, ready in 1 hour',
+      deliveryAddress: 'In-store pickup, 1400 River Rd', expiresAt: '2026-09-27T23:53:02.647Z', id: 'internal-record-id'};
+    const rows = approvalRows(approval({effect: 'financial', details: quote}));
+    expect(rows.slice(0, 7)).toEqual([
+      {label: 'Supplier', value: 'Riverside Building Supply'},
+      {label: 'Item', value: '2 × 3 in. Deck Screws (5 lb box), $34.95 each'},
+      {label: 'Subtotal', value: '$69.90'},
+      {label: 'Tax', value: '$5.07'},
+      {label: 'Fees', value: '$0.00'},
+      {label: 'Delivery', value: '$0.00'},
+      {label: 'Total', value: '$74.97 USD'},
+    ]);
+    expect(rows.slice(7).map(r => r.label)).toEqual(['How you get it', 'Where', 'Price held until', 'Quote']);
+    expect(rows.find(r => r.label === 'Price held until')!.value).toMatch(/\d{1,2}:\d{2}/);
+    expect(JSON.stringify(rows)).not.toContain('internal-record-id');
+    expect(purchaseRows(quote)).toEqual(rows);
   });
 
   it('omits blank terms rather than showing empty rows', () => {

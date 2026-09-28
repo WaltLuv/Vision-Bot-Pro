@@ -64,7 +64,7 @@ export function offerCard(offer: Offer, now = Date.now()): HTMLElement {
 
     h('p', {class: 'note', text: fulfillmentLabel(offer.pickup, 'Pickup')}),
     h('p', {class: 'note', text: fulfillmentLabel(offer.delivery, 'Delivery')}),
-    h('p', {class: 'note', text: offer.inventory === null ? `Stock: ${offer.availability}` : `Stock: ${offer.inventory} at ${offer.availability}`}),
+    h('p', {class: 'note', text: offer.inventory === null ? `Stock: ${offer.availability}` : `Stock: ${[offer.inventory, offer.availability].filter(Boolean).join(' · ')}`}),
     h('p', {class: 'note', text: `Checked ${relativeTime(offer.observedAt, now)} · SKU ${offer.sku}`}),
     h('a', {class: 'chip', href: offer.url, target: '_blank', rel: 'noopener noreferrer', text: `Open at ${offer.supplier}`}),
   );
