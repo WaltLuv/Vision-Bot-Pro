@@ -69,10 +69,18 @@ screen shows the capability as "Not set up" rather than offering a control that
 cannot work.
 
 - **Text messages**: Twilio `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-  `TWILIO_FROM`, and the status webhook pointed at
-  `${PUBLIC_BASE_URL}/webhooks/sms/status`.
+  `TWILIO_FROM`. Point your number's "a message comes in" webhook (HTTP POST)
+  at `${PUBLIC_BASE_URL}/webhooks/sms/inbound`, so replies reach you; delivery
+  updates need no setup, because each message tells Twilio where to report
+  (`/webhooks/sms/status`). Replies are routed to an account by
+  `COMMUNICATION_ROUTES` (`{"+1555...":"owner"}`), which `deploy/local.sh`
+  writes for you. Both webhooks need `PUBLIC_BASE_URL` to be a public https
+  address.
 - **Phone calls**: Retell `RETELL_API_KEY`, `RETELL_FROM`, `RETELL_AGENT_ID`,
   with its webhook pointed at `${PUBLIC_BASE_URL}/webhooks/voice`.
+- **Web search**: `SEARCH_API_KEY` (Brave Search by default; `SEARCH_ENDPOINT`
+  for another provider). Without it the employee can still read any web
+  address it is given.
 - **Suppliers**: each is independent, and a search asks every connected one at
   once. Connect as few or as many as you want; the phone always says which were
   searched and which were not.

@@ -53,36 +53,63 @@ employee, memory and tasks.
 
 ## Get it running
 
-### On your computer, with your Claude subscription
+### On your computer
 
 ```bash
 git clone https://github.com/WaltLuv/Vision-Bot-Pro.git && cd Vision-Bot-Pro
 bash deploy/local.sh
 ```
 
-It needs Node 22 or newer and [Claude Code](https://code.claude.com/docs/en/quickstart),
-and no root. It is written for macOS and Linux; so far it has been run on Linux. The first run has you sign in to Claude Code
-with your Claude subscription -- Anthropic's own sign-in, which Vision-Bot-Pro never
-sees -- then writes private settings to `gateway/.env`, builds the app and
-starts it. Open `http://127.0.0.1:8788` on the same computer and type the
-access code it prints. Ctrl-C stops it; the same command starts it again, in
-seconds, with the same code.
+It needs Node 22 or newer, no root, and one of these to do the work:
 
-**What your subscription covers.** Every task runs through Claude Code with the
-same governed tools and approvals as any other engine: reading the web, memory,
-documents, contacts and workflows, plus -- once you add their keys to
-`gateway/.env` -- text messages, calls, suppliers, a browser you can watch
-(`BROWSERBASE_API_KEY`) and MCP servers. A subscription is for one person, so
-only your own account's tasks run on it.
+- **Hermes** installed on this computer. It is found from the `hermes`
+  command (or set `HERMES_CHECKOUT` and `HERMES_PYTHON`), and the setup asks
+  which model provider and model it should use -- for example `gemini` and
+  `gemini-2.5-flash`, or `custom` for a local model.
+- **Claude Code**, signed in with your Claude subscription through Anthropic's
+  own sign-in, which Vision-Bot-Pro never sees. Only your own account's tasks
+  run on it.
+- **An Anthropic API key**, for Claude hosted by Anthropic.
 
-**What it does not.** The Gmail, Google Calendar, Slack and Notion connections
-belong to Anthropic's Managed Agents, which is an API product: they need an
-`ANTHROPIC_API_KEY` and `AGENT_RUNTIME=anthropic`, not a subscription.
+The first run asks for what it needs, writes private settings to
+`gateway/.env`, builds the app and starts it. Open `http://127.0.0.1:8788` on
+the same computer and type the access code it prints. Ctrl-C stops it; the same
+command starts it again in seconds, with the same code, asking nothing unless
+something required is missing. `bash deploy/local.sh --setup` offers the
+optional extras again.
 
-It listens on this computer only (`HOST=127.0.0.1`). The phone's camera and
-microphone need https, so to use it from your phone, give it a private https
-address such as Tailscale Serve pointed at port 8788. Voice also needs LiveKit,
-a Gemini key and the `agent/` worker, which the local setup does not start yet.
+**The extras**, each offered on the first run and skippable:
+
+| To let it... | It asks for |
+|---|---|
+| talk and see (voice and camera) | a Gemini API key and a LiveKit server; it then builds and starts the voice worker beside the app |
+| use a browser you can watch and take over | a Browserbase API key |
+| search the web | a Brave Search API key |
+| send texts | a Twilio account SID, auth token and number |
+| place calls | a Retell API key, number and agent ID |
+
+One Gemini key serves both voice and, if you pick `gemini`, Hermes. Suppliers
+and connected tools are set in `gateway/.env`; see
+[docs/OWNER-ACTIONS.md](docs/OWNER-ACTIONS.md).
+
+**Texts and calls.** They go out from your computer, but replies, delivery
+updates and call results come back only to a public https address. Set
+`PUBLIC_BASE_URL` in `gateway/.env` to one (a tunnel such as Tailscale Funnel
+or Cloudflare Tunnel to port 8788), point your Twilio number's "a message comes
+in" webhook at `${PUBLIC_BASE_URL}/webhooks/sms/inbound` and your Retell
+agent's webhook at `${PUBLIC_BASE_URL}/webhooks/voice`. Replies to your Twilio
+number are routed to you automatically.
+
+**From your phone.** It listens on this computer only (`HOST=127.0.0.1`). The
+phone's camera and microphone need https, so give it a private https address
+such as Tailscale Serve pointed at port 8788. For voice from the phone, the
+phone must also reach LiveKit: LiveKit Cloud (`wss://...`) works anywhere; a
+LiveKit server on this computer (`ws://127.0.0.1:7880`) works in this
+computer's browser only.
+
+**What a Claude subscription does not cover.** The Gmail, Google Calendar,
+Slack and Notion connections belong to Anthropic's Managed Agents, an API
+product: they need an `ANTHROPIC_API_KEY` and `AGENT_RUNTIME=anthropic`.
 
 ### On a server
 

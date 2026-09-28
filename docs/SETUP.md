@@ -96,9 +96,14 @@ Anthropic key against Anthropic, and asks Claude Code whether it is signed in. O
 capability credentials, and what stays unavailable without each, are listed in
 `docs/OWNER-ACTIONS.md`.
 
-On your own computer, `bash deploy/local.sh` does all of this for the Claude
-Code runtime: it writes `gateway/.env` with generated secrets, `AGENT_RUNTIME=claude`,
-`CLAUDE_CODE_OWNER` and `HOST=127.0.0.1`, builds, and starts the gateway.
+On your own computer, `bash deploy/local.sh` does all of this for whichever
+runtime the computer has -- Hermes (it asks for the model provider, model and
+key), Claude Code signed in with your subscription, or an Anthropic key. It
+writes `gateway/.env` (mode 600) with generated secrets and `HOST=127.0.0.1`,
+offers the optional extras (voice, browser, web search, texts, calls) on the
+first run or with `--setup`, builds the app, starts the gateway and, with a
+Gemini key and LiveKit, the voice worker. Settings it does not manage are kept
+as they were.
 
 Useful extras: `HOST` (address to listen on), `EMPLOYEE_DATA_DIR`, `WEB_DIST_DIR`, `RUN_CAPACITY` (1-99,
 default 2), `AGENT_RUNTIME` (`anthropic`, `hermes` or `claude`),

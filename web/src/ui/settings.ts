@@ -84,13 +84,13 @@ export function settings(ctx: Ctx): HTMLElement {
         h('button', {class: 'ghost', onclick: () => void ctx.signOut()}, 'Sign out'),
         h('button', {class: 'ghost danger', onclick: () => void wipe(ctx)}, 'Delete everything'),
       ),
-      h('p', {class: 'note', text: 'Deleting removes your tasks, files, memory and conversations from the server. It cannot be undone.'}),
+      h('p', {class: 'note', text: 'Deleting removes your tasks, files, memory and conversations from the server and signs you out on every device. It cannot be undone.'}),
     ),
   );
 }
 
 async function wipe(ctx: Ctx) {
-  if (!confirm('Delete all of your tasks, files, memory and conversations? This cannot be undone.')) return;
+  if (!confirm('Delete all of your tasks, files, memory and conversations? You will be signed out everywhere. This cannot be undone.')) return;
   try {
     await api.deleteEverything();
     location.reload();

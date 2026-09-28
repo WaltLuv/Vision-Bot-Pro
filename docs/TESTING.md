@@ -276,6 +276,64 @@ With the real binary (Claude Code 2.1.283), `tests/claude.test.ts` run offline
 the owner's machine), macOS (written for its stock bash 3.2 and BSD tools, not
 run), and reaching it from a phone.
 
+## The whole app, used like its owner (2026-09-28)
+
+The app was set up the way its owner would -- a fresh clone, `bash
+deploy/local.sh` in a real terminal on a PATH with Hermes and no Claude Code,
+every question answered by typing -- and then used from an iPhone-sized
+Chromium, one tap at a time, looking at each screen before the next.
+
+**Real**: the gateway, the phone app, Hermes 0.19 driven by Gemini
+(gemini-2.5-flash), Gemini Live for voice and camera through a LiveKit server
+(v1.13.7, dev mode) on the same machine, the voice worker, and Chromium with a
+camera fed a video of a part (a Moen 1222 box) and a microphone fed speech
+made with Gemini's text-to-speech. Until the owner's Gemini credit was topped
+up, a scripted OpenAI-compatible model stood in for Gemini behind Hermes.
+
+**Stood in for**, because this environment cannot reach them or has no account:
+Twilio (its Messages API, with delivery updates and replies signed by Twilio's
+own library), Retell (create-phone-call, with call started / ended / analyzed
+webhooks signed by retell-sdk), Browserbase (its session API, a real Chromium
+per session driven over CDP, and an https live view streaming that browser's
+screen and passing taps and typing back), the Home Depot, Lowe's, Amazon and
+Walmart catalogs in the shapes their adapters map plus a local yard and a
+specialty vendor, a supplier's MCP server with stock and exact-quote checkout
+tools, and a hardware store website. Each checks its credential the way the
+real service does.
+
+Used, and working after the fixes below: every Settings capability shows
+Ready; adding people; a text approved, delivered, replied to and reviewed; a
+call declined, then approved, placed, transcribed and summarized; a stranger's
+scam text left alone; the employee's browser watched, taken over (typing into
+the store's search box from the phone), handed back, and refused at "Place
+order"; six suppliers compared at once; a quote whose price rose after it was
+shown refused, then a fresh quote approved and ordered with its receipt shown;
+a question from the employee answered; a memory added and forgotten; the
+employee renamed; a spoken question about what the camera sees answered from
+the picture; a spoken request turned into a task and an approval; photos sent
+and described; a task stopped; a task waiting for approval surviving a restart
+and sending once after Resume; sign out, a wrong code, sign in.
+
+Found and fixed along the way (each with a test): no way to add a contact from
+the phone; typing lost on every screen when the gateway reported a change;
+approvals showing internal ids, raw JSON and model-facing descriptions;
+follow-up work titled with the employee's instructions; answers hidden on
+Today; Hermes silently dropping the gateway's browser_type, browser_click and
+web_search (its own tools have those names); refusals and never-made clicks
+reported as "result unknown"; a click landing on a hidden label; a reconnect
+replaying the whole event history until the rate limit locked the owner out;
+the app's page policy blocking a LiveKit on the same computer; a conversation
+showing "live" with no one there; ending a call stopping the camera (black
+photos, frozen viewfinder); the Camera tab never showing its camera, and
+sending questions without the photo; placed orders not shown; call outcomes
+served as escaped JSON; markdown shown as symbols; the local setup not routing
+replies, asking for the Gemini key twice, and asking every skipped extra again
+on every start.
+
+**Not verified here**: real Twilio, Retell and Browserbase accounts, the
+suppliers' real partner APIs, LiveKit Cloud, and the app on a real phone over
+https.
+
 ## Installer and doctor
 
 `deploy/install.sh` and `deploy/doctor.sh` were run for real in a fresh clone,
