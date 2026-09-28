@@ -2,6 +2,7 @@
 Only gateway tools are registered. No public Hermes API is invented here.
 """
 import contextlib
+import inspect
 import json
 import sys
 
@@ -22,6 +23,12 @@ def main():
         save_config(config)
         from run_agent import AIAgent
         from tools.registry import registry
+        # Hermes has tools of its own named like some gateway tools (browser_type,
+        # browser_click, web_search). Its registry refuses a second tool of the same
+        # name -- with a log line, not an error -- so without this the model was
+        # never offered the gateway's. This process serves one run of gateway
+        # tools only, so the gateway's take the names.
+        takes_over = 'override' in inspect.signature(registry.register).parameters
         for definition in request['tools']:
             def handler(args, _name=definition['name'], **kwargs):
                 emit({'type': 'tool', 'name': _name, 'args': args})
@@ -29,7 +36,12 @@ def main():
                 if not reply:
                     raise RuntimeError('Gateway disconnected')
                 return reply.strip()
-            registry.register(name=definition['name'], toolset='visionclaw', schema=definition, handler=handler)
+            if takes_over:
+                registry.register(name=definition['name'], toolset='visionclaw', schema=definition, handler=handler, override=True)
+            else:
+                with contextlib.suppress(Exception):
+                    registry.deregister(definition['name'])
+                registry.register(name=definition['name'], toolset='visionclaw', schema=definition, handler=handler)
         agent = AIAgent(
             provider=request.get('provider') or None, model=request.get('model') or '',
             base_url=request.get('baseUrl') or None, api_key=request.get('apiKey') or None,
@@ -42,8 +54,13 @@ def main():
             save_trajectories=False, max_iterations=40,
             ephemeral_system_prompt=request['instructions'], session_id=request['sessionId'],
         )
-        if set(agent.valid_tool_names) - {t['name'] for t in request['tools']}:
+        offered, wanted = set(agent.valid_tool_names), {t['name'] for t in request['tools']}
+        if offered - wanted:
             raise RuntimeError('Unexpected tool enabled')
+        # Every gateway tool reaches the model, or the run does not start: a tool
+        # quietly left out is a capability the owner thinks the employee has.
+        if wanted - offered:
+            raise RuntimeError('Gateway tool not offered: ' + ', '.join(sorted(wanted - offered)))
         content = request['task']
         if request.get('images'):
             content = [{'type': 'text', 'text': content}] + [
