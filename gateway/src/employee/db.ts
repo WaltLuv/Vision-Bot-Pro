@@ -30,6 +30,7 @@ export class Store {
  all(kind:string):{owner:string,data:Row}[]{return this.sql.prepare('SELECT owner,data FROM records WHERE kind=? ORDER BY rowid').all(kind).map(r=>({owner:String(r.owner),data:JSON.parse(String(r.data))}));}
  remove(owner:string,kind:string,id:string){this.sql.prepare('DELETE FROM records WHERE owner=? AND kind=? AND id=?').run(owner,kind,id);}
  event(owner:string,type:string,data:object){this.sql.prepare('INSERT INTO events(owner,data) VALUES(?,?)').run(owner,JSON.stringify({type,...data,at:new Date().toISOString()}));}
+ latestEvent(owner:string){return Number((this.sql.prepare('SELECT MAX(seq) AS seq FROM events WHERE owner=?').get(owner) as any)?.seq??0);}
  events(owner:string,after=0){return this.sql.prepare('SELECT seq,data FROM events WHERE owner=? AND seq>? ORDER BY seq LIMIT 200').all(owner,after).map(r=>({seq:Number(r.seq),...JSON.parse(String(r.data))}));}
  transaction<T>(fn:()=>T){this.sql.exec('BEGIN IMMEDIATE');try{const v=fn();this.sql.exec('COMMIT');return v;}catch(e){this.sql.exec('ROLLBACK');throw e;}}
  close(){this.sql.close();}

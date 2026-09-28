@@ -17,7 +17,15 @@ test('HTTP: cookie auth, CSRF, images, legacy delegation, persistence and tenant
   const jpeg=await sharp({create:{width:8,height:8,channels:3,background:'#123456'}}).jpeg().toBuffer();const body={messages:[{role:'user',content:'Find this part'}],image:jpeg.toString('base64'),source:'glasses'};
   const delegated=await post('/v1/chat/completions',body,{Authorization:'Bearer fixture-a','idempotency-key':'visual'});assert.equal(delegated.status,200);const envelope=await delegated.json();assert.ok(envelope.runId);const result=await (await get('/api/runs/'+envelope.runId,auth)).json();assert.equal(result.context.source,'glasses');assert.equal(result.context.attachments.length,1);assert.match(result.result,/1 image/);
   assert.equal((await post('/v1/chat/completions',body,{Authorization:'Bearer fixture-a','idempotency-key':'visual'})).status,200);assert.equal(e.db.list('alice','run').length,2);
-  const ac=new AbortController();const events=await fetch(base+'/api/events',{headers:auth,signal:ac.signal});const reader=events.body!.getReader();const chunk=new TextDecoder().decode((await reader.read()).value);assert.match(chunk,/run.updated/);ac.abort();
+  // A new stream starts at now and says where that is; replaying the history made a phone refetch once per past event.
+  const stream=async(url:string,until:RegExp)=>{const ac=new AbortController();const res=await fetch(base+url,{headers:auth,signal:ac.signal});const reader=res.body!.getReader();let text='';for(let i=0;i<4&&!until.test(text);i++)text+=new TextDecoder().decode((await reader.read()).value);ac.abort();return text;};
+  const fresh=await stream('/api/events',/keepalive/);assert.match(fresh,/"type":"stream.ready"/);assert.doesNotMatch(fresh,/run.updated/,'no history on a new stream');
+  assert.match(fresh,new RegExp(`id: ${e.db.latestEvent('alice')}\\n`),'it starts at the latest event');
+  assert.match(await stream('/api/events?after=0',/run.updated/),/run.updated/,'a reconnect resumes from where it was');
+  // Structured evidence, such as a call's outcome, reads as text a person can follow, not escaped JSON.
+  const outcome=e.db.create('alice','artifact',{kind:'call_summary',name:'Call outcome',data:{summary:'Dan confirmed Tuesday.',transcript:'Agent: Hi\nUser: Yes',outcome:{confirmed:true}}});
+  const shown=await get(`/api/artifacts/${outcome.id}/content`,auth);assert.equal(shown.status,200);assert.match(shown.headers.get('content-type')!,/^text\/plain/);assert.match(shown.headers.get('content-security-policy')!,/sandbox/);
+  assert.equal(await shown.text(),'Call outcome\n\nSummary: Dan confirmed Tuesday.\n\nTranscript\n  Agent: Hi\n  User: Yes\n\nOutcome\n  Confirmed: yes\n');
   revoked=true;assert.equal((await get('/api/state',{cookie})).status,401);
  }finally{e.stop();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));e.db.close();rmSync(dir,{recursive:true});delete process.env.EMPLOYEE_DB_PATH;delete process.env.EMPLOYEE_DATA_DIR;}
 });

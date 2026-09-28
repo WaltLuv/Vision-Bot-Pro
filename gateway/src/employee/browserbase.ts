@@ -1,4 +1,4 @@
-import {chromium,type Browser,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {ToolGateway,type ToolContext} from './tools.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
+import {chromium,type Browser,type Locator,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
 
 /**
  * Browserbase: a remote browser the employee drives itself, one step at a time.
@@ -29,6 +29,22 @@ const NO_PURCHASE='The browser will not press a button that places an order or p
 const NO_SECRET="The browser will not type passwords or payment details. Tell the owner: they can take the browser over, type it themselves and hand it back.";
 const ended=(status:string)=>['closed','completed','failed','cancelled'].includes(status);
 
+/**
+ * The element a step means: the closest match first -- an exact name, then a
+ * looser one, then text -- and only something a person could see. Taking the
+ * first loose match in page order clicked a hidden "Search products" label
+ * instead of the Search button next to it.
+ */
+async function find(candidates:Locator[]):Promise<Locator|null>{
+ for(const candidate of candidates){const shown=candidate.filter({visible:true});if(await shown.count())return shown.first();}
+ return null;
+}
+/** A step that never reached the page -- nothing matched, or it never became usable -- changed nothing. */
+async function onPage<T>(what:string,act:()=>Promise<T>):Promise<T>{
+ try{return await act();}
+ catch(e){if((e as Error)?.name==='TimeoutError')throw new Refused(`${what} could not be used: it stayed hidden, covered or disabled. Nothing was changed.`);throw e;}
+}
+
 interface Open{browser:Browser;page:Page;computerId:string}
 
 export class BrowserbaseBrowsers implements DrivenBrowsers{
@@ -41,7 +57,7 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
   return r.json() as Promise<any>;
  }
  register(t:ToolGateway){
-  t.register({id:'browser_open',effect:'computer',schema:z.object({purpose:z.string().min(3).max(300)}),
+  t.register({id:'browser_open',effect:'computer',title:'Open a browser you can watch',schema:z.object({purpose:z.string().min(3).max(300)}),
    description:'Open a live web browser for this task, to read and use websites step by step. The owner can watch it and take it over. It will not type passwords or payment details or place orders; when a site needs those, say so and the owner can take over.',
    run:async(a,c)=>this.openFor(c,a.purpose)});
   t.register({id:'browser_goto',effect:'read',schema:z.object({url:z.string().url().refine(u=>/^https?:\/\//i.test(u),'Only web addresses can be opened')}),
@@ -53,21 +69,24 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
   t.register({id:'browser_click',effect:'write',schema:z.object({target:z.string().min(1).max(200)}),
    description:'Click a link or button in the open browser, by its visible text or label',
    run:async(a,c)=>{
-    const o=await this.step(c);if(PURCHASE.test(a.target))throw Error(NO_PURCHASE);
-    const el=o.page.getByRole('button',{name:a.target}).or(o.page.getByRole('link',{name:a.target})).or(o.page.getByText(a.target)).first();
+    const o=await this.step(c);if(PURCHASE.test(a.target))throw new Refused(NO_PURCHASE);
+    const el=await find([o.page.getByRole('button',{name:a.target,exact:true}),o.page.getByRole('link',{name:a.target,exact:true}),o.page.getByRole('button',{name:a.target}),o.page.getByRole('link',{name:a.target}),o.page.getByText(a.target,{exact:true}),o.page.getByText(a.target)]);
+    if(!el)throw new Refused(`Nothing on the page that can be clicked matches "${a.target}". Read the page for its buttons and links.`);
     // Judge the element actually hit, not only what the model called it.
     const name=await el.evaluate((e:any)=>[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title')].filter(Boolean).join(' '),undefined,{timeout:10_000});
-    if(PURCHASE.test(name))throw Error(NO_PURCHASE);
-    await el.click({timeout:10_000});await o.page.waitForLoadState('domcontentloaded',{timeout:15_000}).catch(()=>{});
+    if(PURCHASE.test(name))throw new Refused(NO_PURCHASE);
+    await onPage(`"${a.target}"`,()=>el.click({timeout:10_000}));await o.page.waitForLoadState('domcontentloaded',{timeout:15_000}).catch(()=>{});
     return this.where(o.page);}});
   t.register({id:'browser_type',effect:'write',schema:z.object({target:z.string().min(1).max(200),text:z.string().max(2000),submit:z.boolean().optional()}),
    description:'Type into a field in the open browser, found by its label or placeholder; submit presses Enter afterwards',
    run:async(a,c)=>{
     const o=await this.step(c);
-    const el=o.page.getByLabel(a.target).or(o.page.getByPlaceholder(a.target)).or(o.page.getByRole('textbox',{name:a.target})).or(o.page.getByRole('searchbox',{name:a.target})).first();
+    const exact={exact:true} as const,fields=(exact?:{exact:true})=>[o.page.getByLabel(a.target,exact),o.page.getByPlaceholder(a.target,exact),o.page.getByRole('textbox',{name:a.target,...exact}),o.page.getByRole('searchbox',{name:a.target,...exact})];
+    const el=await find([...fields(exact),...fields()]);
+    if(!el)throw new Refused(`No field on the page matches "${a.target}". Read the page for its fields.`);
     const field=await el.evaluate((e:any)=>({type:String(e.type??''),autocomplete:String(e.getAttribute('autocomplete')??''),words:[e.name,e.id,e.placeholder,e.getAttribute('aria-label'),...[...(e.labels??[])].map((l:any)=>l.innerText)].filter(Boolean).join(' ')}),undefined,{timeout:10_000});
-    if(field.type==='password'||SECRET_AUTOCOMPLETE.test(field.autocomplete)||SECRET_FIELD.test(`${field.words} ${a.target}`))throw Error(NO_SECRET);
-    await el.fill(a.text,{timeout:10_000});
+    if(field.type==='password'||SECRET_AUTOCOMPLETE.test(field.autocomplete)||SECRET_FIELD.test(`${field.words} ${a.target}`))throw new Refused(NO_SECRET);
+    await onPage(`The field "${a.target}"`,()=>el.fill(a.text,{timeout:10_000}));
     if(a.submit){await el.press('Enter');await o.page.waitForLoadState('domcontentloaded',{timeout:15_000}).catch(()=>{});}
     return this.where(o.page);}});
   t.register({id:'browser_screenshot',effect:'read',schema:z.object({}),
@@ -78,7 +97,7 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
    run:async(_a,c)=>{const o=this.open.get(this.key(c));if(o)await this.release(c.owner,o.computerId,'closed');return {status:'closed'};}});
  }
  private async openFor(c:ToolContext,purpose:string){
-  if(!browserbaseEnabled())throw Error('The web browser is not connected');
+  if(!browserbaseEnabled())throw new Refused('The web browser is not connected');
   const existing=this.open.get(this.key(c));if(existing)return {computerId:existing.computerId,status:'open'};
   const ticket=this.db.create(c.owner,'computer',{runId:c.runId,status:'queued',task:purpose,provider:'browserbase',control:'agent'});
   try{
@@ -103,9 +122,9 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
  private async step(c:ToolContext){
   for(;;){
    c.assertAuthorized();
-   const o=this.open.get(this.key(c));if(!o)throw Error('No browser is open for this task. Open one first.');
+   const o=this.open.get(this.key(c));if(!o)throw new Refused('No browser is open for this task. Open one first.');
    const r=this.db.get(c.owner,'computer',o.computerId);
-   if(!r||ended(r.status)){this.open.delete(this.key(c));throw Error('The browser was closed.');}
+   if(!r||ended(r.status)){this.open.delete(this.key(c));throw new Refused('The browser was closed.');}
    if(r.control!=='owner')return o;
    await new Promise(res=>setTimeout(res,500));
   }

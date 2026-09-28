@@ -1,4 +1,4 @@
-import {z} from 'zod';import {Store,type Row} from './db.js';import {ToolGateway,type ToolContext} from './tools.js';import {startBrowse,continueBrowse,runLiveUrl,fetchRunDetail,browserUseBase} from '../browse.js';import {providerJson} from './communications.js';import {terminal} from './runs.js';
+import {z} from 'zod';import {Store,type Row} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {startBrowse,continueBrowse,runLiveUrl,fetchRunDetail,browserUseBase} from '../browse.js';import {providerJson} from './communications.js';import {terminal} from './runs.js';
 /** Reuses the upstream Browser Use Cloud v4 adapter. Each job gets a fresh browser,
  * no stored account profile, no supplied secrets and no payment credentials. */
 
@@ -85,7 +85,7 @@ export class BrowserCapability{
   this.db.put(owner,'computer',next);this.db.event(owner,'computer.updated',{runId:r.runId,computerId:id,control:to});return next;
  }
  async execute(task:string,c:ToolContext){
-  if(!process.env.BROWSER_USE_API_KEY)throw Error('Web browsing is not connected');
+  if(!process.env.BROWSER_USE_API_KEY)throw new Refused('Web browsing is not connected');
   const ticket=this.db.create(c.owner,'computer',{runId:c.runId,status:'queued',task});const queueDeadline=Date.now()+RUN_BUDGET;
   try{
    await waitForBrowserSlot(this.db,ticket,c.assertAuthorized,queueDeadline);
@@ -122,7 +122,7 @@ export class BrowserCapability{
   let host:string|undefined;try{host=new URL(url).host;}catch{}
   this.db.put(owner,'computer',{...latest,liveUrl:url,liveEmbed:embeddableLiveUrl(url),liveHost:host,liveFrom:runId});this.db.event(owner,'computer.updated',{runId:latest.runId,computerId:latest.id});
  }
- register(t:ToolGateway){t.register({id:'browser_work',description:'Use a fresh browser for this specific web task',effect:'computer',schema:z.object({task:z.string().min(1).max(8000)}),run:async(a,c)=>this.execute(a.task,c)});}
+ register(t:ToolGateway){t.register({id:'browser_work',title:'Let a browser do this web task',description:'Use a fresh browser for this specific web task',effect:'computer',schema:z.object({task:z.string().min(1).max(8000)}),run:async(a,c)=>this.execute(a.task,c)});}
  async cleanup(){for(const {owner,data:r} of this.db.all('computer'))if(!closed.includes(r.status)&&terminal.has(this.db.get(owner,'run',r.runId)?.status)){if(r.provider==='browserbase'&&this.driven)await this.driven.release(owner,r.id,'closed');else await this.cancel(owner,r.id);}}
  /**
   * After a restart nothing drives or watches a browser that was open, so none can be kept. Left alone, one

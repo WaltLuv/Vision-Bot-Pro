@@ -224,6 +224,22 @@ test('the phone app may frame a live view host and nothing else, and still runs 
  assert.match(csp,/frame-ancestors 'none'/,'and nobody may frame the app itself');
 });
 
+// Voice and camera connect straight from the phone to LiveKit. A LiveKit on the same computer speaks plain ws:,
+// which the policy blocked, so a local conversation could never start.
+test('the phone app may connect to the configured LiveKit server, and the setting adds nothing else',async()=>{
+ const {appContentSecurityPolicy}=await import('../src/csp.js');
+ const before=process.env.LIVEKIT_URL;
+ try{
+  process.env.LIVEKIT_URL='ws://127.0.0.1:7880';
+  assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: ws:\/\/127\.0\.0\.1:7880 http:\/\/127\.0\.0\.1:7880;/);
+  process.env.LIVEKIT_URL='wss://visionbot.livekit.cloud/some/path?x=1';
+  assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: wss:\/\/visionbot\.livekit\.cloud https:\/\/visionbot\.livekit\.cloud;/,'just the origin');
+  for(const bad of ["ws://a.example; script-src *","https://livekit.example","not a url"]){
+   process.env.LIVEKIT_URL=bad;assert.match(appContentSecurityPolicy(),/connect-src 'self' wss:;/,bad);
+  }
+ }finally{if(before===undefined)delete process.env.LIVEKIT_URL;else process.env.LIVEKIT_URL=before;}
+});
+
 // A restart leaves nothing driving or watching a browser that was open. Its record must not keep the only slot,
 // and an old queued request must not hold up every browser request behind it.
 test('after a restart, browsers left open are stopped at their provider and their slots freed',async t=>{

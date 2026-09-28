@@ -21,6 +21,7 @@ test('an outbound message is not sent until it is approved, and then goes only t
  assert.equal(approval.effect,'communication');
  assert.equal(approval.details.to,'+15550001111','the approval card names the exact destination');
  assert.equal(approval.details.body,'On my way','and the exact text being sent');
+ assert.equal(approval.label,'Send this text','headed for the owner, not with the description written for the model');
 
  t.decide('a',pending.approvalId,'once');
  const result=await t.invoke('a','r','sms_send',{contactId:c.id,to:'+15550001111',body:'On my way'},'k1');

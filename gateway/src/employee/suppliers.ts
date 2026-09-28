@@ -114,9 +114,20 @@ export function compareOffers(offers: Offer[], currency: string): PricedOffer[] 
       b.confidence - a.confidence);
 }
 
+// Sizes and plurals are written every which way -- "3 inch", "3 in.", "3\"" -- so
+// they are compared in one form. A size is kept even when it is a single digit:
+// a 2 in. screw is not a 3 in. one.
+const UNIT: Record<string, string> = {inch: 'in', inches: 'in', foot: 'ft', feet: 'ft', pound: 'lb', pounds: 'lb', lbs: 'lb',
+  millimeter: 'mm', millimeters: 'mm', millimetre: 'mm', millimetres: 'mm', gallon: 'gal', gallons: 'gal', ounce: 'oz', ounces: 'oz'};
+const FILLER = new Set(['of', 'for', 'the', 'and', 'with', 'from', 'per']);
+function term(word: string): string {
+  const w = word.replace(/\.+$/, '');
+  return UNIT[w] ?? (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
+}
+
 /** Search-text overlap only. Deliberately not a claim about the item being correct. */
 export function scoreMatch(query: string, product: string): {matchQuality: Offer['matchQuality']; confidence: number} {
-  const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9.]+/i).filter(w => w.length > 1));
+  const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9.]+/i).map(term).filter(w => (w.length > 1 || /\d/.test(w)) && !FILLER.has(w)));
   const wanted = words(query), got = words(product);
   if (!wanted.size) return {matchQuality: 'unverified', confidence: 0};
   let hit = 0;

@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';import os from 'node:os';import path from 'node:path';import {z} from 'zod';
 import {Store} from '../src/employee/db.js';import {ToolGateway} from '../src/employee/tools.js';
-import {BUILTIN_SUPPLIERS,CatalogAdapter,compareOffers,configuredSuppliers,isSecureEndpoint,loadSuppliers,offerSchema,searchSuppliers,supplierConfigSchema,type Offer,type SupplierAdapter} from '../src/employee/suppliers.js';
+import {BUILTIN_SUPPLIERS,CatalogAdapter,compareOffers,configuredSuppliers,isSecureEndpoint,loadSuppliers,offerSchema,scoreMatch,searchSuppliers,supplierConfigSchema,type Offer,type SupplierAdapter} from '../src/employee/suppliers.js';
 import {EbayBrowse,optionalSuppliers,registerProcurement,registerSupplier,type SupplierCheckout} from '../src/employee/procurement.js';
 
 const builtin=(id:string,endpoint='https://partner.example.test/search?q={query}')=>supplierConfigSchema.parse({
@@ -416,4 +416,14 @@ test('an offer read on a website joins the comparison, marked as such, and canno
  await assert.rejects(()=>t.invoke('b','rb','offer_record',{requestId:search.requestId,supplier:'Menards',product:'x',url:'https://www.menards.com/p/x',unitPrice:1},'ob'),/not found/,'another owner cannot add to your comparison');
  await assert.rejects(()=>t.invoke('a','r','offer_record',{supplier:'X',product:'x',url:'javascript:alert(1)',unitPrice:1},'bad'),'only a real web address');
  db.close();
+});
+
+// "3 inch" and "3 in." are the same screw; a 2 in. screw is not. Units, plurals
+// and filler words are compared in one form, and a size counts even as one digit.
+test('match scoring reads sizes and plurals the way people write them',()=>{
+ const title='3 in. #10 Exterior Deck Screws (5 lb box)';
+ for(const query of ['3 inch deck screws','3 in. deck screws','deck screw','5 pound box of deck screws'])assert.equal(scoreMatch(query,title).matchQuality,'exact',query);
+ assert.equal(scoreMatch('2 inch deck screws',title).matchQuality,'candidate','a different size is only a possible match');
+ assert.equal(scoreMatch('brass fittings','Brass compression fitting').matchQuality,'exact','"brass" is not a plural');
+ assert.equal(scoreMatch('Moen 1222 cartridge',title).matchQuality,'unverified');
 });

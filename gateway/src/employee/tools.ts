@@ -3,8 +3,15 @@ import {z} from 'zod';
 import {Store} from './db.js';
 import {terminal} from './runs.js';
 export type Effect='read'|'write'|'communication'|'destructive'|'financial'|'sensitive'|'computer';
+/**
+ * A tool that declines before acting -- a guard, a precondition, a price that
+ * moved since approval -- throws this. Nothing outside happened, so the action is
+ * recorded as failed, not as uncertain: there is nothing for the owner to check.
+ */
+export class Refused extends Error {}
 export interface ToolContext {owner:string;runId:string;actionId:string;assertAuthorized:()=>void}
-export interface Tool {id:string;description:string;effect:Effect;owners?:string[];schema:z.ZodType<any>;run:(args:any,ctx:ToolContext)=>Promise<any>}
+// title is what the owner sees on an approval; description is written for the model.
+export interface Tool {id:string;description:string;title?:string;effect:Effect;owners?:string[];schema:z.ZodType<any>;run:(args:any,ctx:ToolContext)=>Promise<any>}
 export function canonical(x:any):string{return JSON.stringify(x&&typeof x==='object'?(Array.isArray(x)?x.map(v=>JSON.parse(canonical(v))):Object.fromEntries(Object.keys(x).sort().filter(k=>x[k]!==undefined).map(k=>[k,JSON.parse(canonical(x[k]))]))):x);}
 export class ToolGateway {
  readonly tools=new Map<string,Tool>();
@@ -28,7 +35,7 @@ export class ToolGateway {
   if(approval&&approval.expiresAt<Date.now())throw Error('Approval expired; request a fresh action');
   if(approval?.status==='denied')throw Error('Action was declined');
   if((policy==='ask'||tool.effect==='financial')&&approval?.status!=='approved'){
-   if(!approval){approval=this.db.create(owner,'approval',{actionId:action.id,runId,tool:name,label:tool.description,effect:tool.effect,details:args,status:'pending',expiresAt:Date.now()+30*60_000});this.db.event(owner,'approval.requested',{runId,approvalId:approval.id});}
+   if(!approval){approval=this.db.create(owner,'approval',{actionId:action.id,runId,tool:name,label:tool.title??tool.description,effect:tool.effect,details:args,status:'pending',expiresAt:Date.now()+30*60_000});this.db.event(owner,'approval.requested',{runId,approvalId:approval.id});}
    this.db.put(owner,'run',{...run,status:'needs_user'});
    return {approvalId:approval.id,status:'needs_user'};
   }
@@ -40,7 +47,7 @@ export class ToolGateway {
   assertAuthorized();this.db.put(owner,'action',{...action,status:'executing'});this.db.event(owner,'tool.started',{runId,tool:name,actionId:action.id});
   try{const result=await tool.run(args,{owner,runId,actionId:action.id,assertAuthorized});
    if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:'completed',result});this.db.create(owner,'artifact',{runId,kind:'tool_receipt',name:tool.description,data:result});this.db.event(owner,'tool.completed',{runId,tool:name,actionId:action.id});}return result;
-  }catch(e){if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:tool.effect==='read'?'failed':'uncertain'});this.db.event(owner,'tool.failed',{runId,tool:name});}throw e;}
+  }catch(e){if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:tool.effect==='read'||e instanceof Refused?'failed':'uncertain'});this.db.event(owner,'tool.failed',{runId,tool:name});}throw e;}
  }
  async wait(owner:string,runId:string,name:string,args:unknown,key:string,signal:AbortSignal){let result=await this.invoke(owner,runId,name,args,key);while(result.approvalId){signal.throwIfAborted();const a=this.db.get(owner,'approval',result.approvalId);if(a?.status==='pending'&&a.expiresAt>Date.now())await new Promise(r=>setTimeout(r,300));else result=await this.invoke(owner,runId,name,args,key);}const run=this.db.get(owner,'run',runId);if(run?.status==='needs_user'&&!signal.aborted)this.db.put(owner,'run',{...run,status:'working'});return result;}
  decide(owner:string,id:string,decision:'once'|'deny'|'always'|'never'){

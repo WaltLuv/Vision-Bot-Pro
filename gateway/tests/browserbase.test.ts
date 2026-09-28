@@ -22,6 +22,8 @@ function shop(){
   if(url.pathname==='/search')return res.end(page('Results',`<p>Results for ${String(url.searchParams.get('q')).replace(/[<>&]/g,'')}</p><a href="/product">Moen 1222 cartridge</a>`));
   if(url.pathname==='/product')return res.end(page('Moen 1222 cartridge','<h1>Moen 1222 cartridge</h1><p>$28.98 - 3 in stock</p><form method="post" action="/cart"><button>Add to cart</button></form><form method="post" action="/order"><button>Confirm and pay</button><input type="submit" value="Place order"></form><a href="/signin">Sign in</a>'));
   if(url.pathname==='/cart')return res.end(page('Cart','<p>1 item in your cart</p>'));
+  // A hidden label, a button and a link all say "Search": the button is what "Search" means.
+  if(url.pathname==='/find')return res.end(page('Find','<form action="/search"><label for="q" style="display:none">Search products</label><input id="q" name="q" placeholder="Search products"><button>Search</button></form><a href="/cart">Search tips</a>'));
   if(url.pathname==='/order'){orders.push(req.method!);return res.end(page('Ordered','<p>Order placed</p>'));}
   if(url.pathname==='/signin')return res.end(page('Sign in','<label>Email <input type="email" name="email"></label><label>Password <input type="password" name="pw"></label><label>Access word <input type="password" name="aw"></label><label>Name on order <input name="cardholder" autocomplete="cc-name"></label><label>Delivery note <input name="note"></label>'));
   res.statusCode=404;res.end();
@@ -97,6 +99,18 @@ test('the employee drives a Browserbase browser step by step, and never spends o
  await assert.rejects(()=>use('browser_click',{target:'Place order'}),/will not press a button that places an order/);
  await assert.rejects(()=>use('browser_click',{target:'Confirm'}),/will not press a button that places an order/,'judged by the button actually hit, not the name the model used');
  assert.deepEqual(site.orders,[],'nothing was ordered');
+
+ // The closest visible match is what gets clicked, not the first loose match in the page.
+ await use('browser_goto',{url:site.url+'/find'});
+ await use('browser_type',{target:'Search products',text:'bolts'});
+ assert.match((await use('browser_click',{target:'Search'})).url,/\/search\?q=bolts$/,'the Search button, not the hidden label or the Search tips link');
+ // A step that never reached the page changed nothing, so it is failed, not left for the owner to check.
+ await assert.rejects(()=>use('browser_click',{target:'Checkout now'}),/Nothing on the page that can be clicked matches/);
+ await assert.rejects(()=>use('browser_type',{target:'Coupon code',text:'X'}),/No field on the page matches/);
+ const unfinished=db.list('alice','action').filter((a:any)=>['browser_click','browser_type'].includes(a.name)&&a.status!=='completed').map((a:any)=>a.status);
+ assert.equal(unfinished.length,4,'two refused purchases, a click and a field that matched nothing');
+ assert.ok(unfinished.every((s:string)=>s==='failed'),`none left uncertain: ${unfinished}`);
+ // A refusal is certain: nothing happened, so the owner is not asked to find out what did.
 
  // So are secrets.
  await use('browser_goto',{url:site.url+'/signin'});

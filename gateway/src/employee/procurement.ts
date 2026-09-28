@@ -1,4 +1,4 @@
-import {z} from 'zod';import {Store} from './db.js';import {ToolGateway,canonical} from './tools.js';import {providerJson} from './communications.js';
+import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,canonical} from './tools.js';import {providerJson} from './communications.js';
 import {compareOffers,loadSuppliers,offerSchema,scoreMatch,searchSuppliers,type Offer,type SupplierAdapter} from './suppliers.js';
 export {compareOffers,offerSchema,type Offer} from './suppliers.js';
 
@@ -96,10 +96,10 @@ export const quoteSchema=z.object({supplier:z.string().min(1),quoteId:z.string()
 export interface SupplierCheckout{quote(cartId:string,owner:string):Promise<z.infer<typeof quoteSchema>>;refresh(quoteId:string,owner:string):Promise<z.infer<typeof quoteSchema>>;order(quoteId:string,key:string,owner:string,beforeCommit?:()=>void):Promise<{orderNumber:string;receiptUrl:string;status:string}>}
 export function registerSupplier(t:ToolGateway,db:Store,supplier:SupplierCheckout,connection='supplier',owners?:string[]){const suffix=connection==='supplier'?'':`_${connection}`;
  t.register({id:'purchase_quote'+suffix,owners,description:'Get an exact supplier quote including all costs',effect:'read',schema:z.object({cartId:z.string()}),run:async(a,c)=>{if(!db.get(c.owner,'cart',a.cartId))throw Error('Cart not found');const quote=quoteSchema.parse(await supplier.quote(a.cartId,c.owner));return db.create(c.owner,'quote',{...quote,connection,runId:c.runId});}});
- t.register({id:'purchase_order'+suffix,owners,description:'Place the exact purchase shown for approval',effect:'financial',schema:quoteSchema.extend({id:z.string()}),run:async(a,c)=>{
-  const saved=db.get(c.owner,'quote',a.id);if(!saved||saved.connection!==connection)throw Error('Quote not found');const approved=quoteSchema.parse(a);if(canonical(approved)!==canonical(quoteSchema.parse(saved)))throw Error('Quote differs from the supplier record');
-  const current=quoteSchema.parse(await supplier.refresh(a.quoteId,c.owner));if(Date.parse(current.expiresAt)<=Date.now()||canonical(current)!==canonical(approved))throw Error('Price, stock or fulfillment changed. Request a new quote and approval.');
-  const cents=(n:number)=>Math.round(n*100);if(cents(a.subtotal)+cents(a.tax)+cents(a.fees)+cents(a.delivery)!==cents(a.total)||a.items.reduce((n:number,i:any)=>n+cents(i.unitPrice)*i.quantity,0)!==cents(a.subtotal))throw Error('Supplier total does not reconcile');
+ t.register({id:'purchase_order'+suffix,owners,title:'Buy this',description:'Place the exact purchase shown for approval',effect:'financial',schema:quoteSchema.extend({id:z.string()}),run:async(a,c)=>{
+  const saved=db.get(c.owner,'quote',a.id);if(!saved||saved.connection!==connection)throw new Refused('Quote not found');const approved=quoteSchema.parse(a);if(canonical(approved)!==canonical(quoteSchema.parse(saved)))throw new Refused('Quote differs from the supplier record');
+  const current=quoteSchema.parse(await supplier.refresh(a.quoteId,c.owner));if(Date.parse(current.expiresAt)<=Date.now()||canonical(current)!==canonical(approved))throw new Refused('Price, stock or fulfillment changed. Request a new quote and approval.');
+  const cents=(n:number)=>Math.round(n*100);if(cents(a.subtotal)+cents(a.tax)+cents(a.fees)+cents(a.delivery)!==cents(a.total)||a.items.reduce((n:number,i:any)=>n+cents(i.unitPrice)*i.quantity,0)!==cents(a.subtotal))throw new Refused('Supplier total does not reconcile');
   c.assertAuthorized();const receipt=z.object({orderNumber:z.string().min(1),receiptUrl:z.string().url(),status:z.string()}).parse(await supplier.order(a.quoteId,c.actionId,c.owner,c.assertAuthorized));return db.create(c.owner,'order',{...approved,...receipt,runId:c.runId,approvalActionId:c.actionId,connection});
  }});
 }
