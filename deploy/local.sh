@@ -130,7 +130,9 @@ case "$RUNTIME" in
     case "$HP" in
       custom) HB="$(ask HERMES_BASE_URL 'Model endpoint (Ollama: http://127.0.0.1:11434/v1)')"; HK="$(ask HERMES_API_KEY 'Its key (any value if it takes none)' secret)" ;;
       anthropic) ANTHROPIC_KEY="$(ask ANTHROPIC_API_KEY 'Anthropic API key' secret)" ;;
-      gemini) GEMINI_KEY="$(ask GEMINI_API_KEY 'Gemini API key' secret)" ;;
+      # One Gemini key serves both: already given for talking and seeing, it is not asked for again.
+      gemini) GEMINI_KEY="$(setting GEMINI_API_KEY)"; [ -n "$GEMINI_KEY" ] || GEMINI_KEY="$(setting GOOGLE_API_KEY)"
+              [ -n "$GEMINI_KEY" ] || GEMINI_KEY="$(ask GEMINI_API_KEY 'Gemini API key' secret)" ;;
       openai-api|openai) OPENAI_KEY="$(ask OPENAI_API_KEY 'OpenAI API key' secret)" ;;
       openrouter) OPENROUTER_KEY="$(ask OPENROUTER_API_KEY 'OpenRouter API key' secret)" ;;
       "") ;;
