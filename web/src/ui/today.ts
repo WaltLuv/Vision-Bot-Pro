@@ -4,6 +4,7 @@ import {cameraMessage} from '../camera';
 import type {Card} from '../realtime';
 import {activeRun, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
 import {approvalCard} from './approvals';
+import {richText} from '../rich';
 import type {Ctx} from './ctx';
 import {Dictation, dictationMessage, dictationSupported} from '../voice';
 
@@ -26,6 +27,31 @@ const preview = document.createElement('video');
 preview.muted = true; preview.playsInline = true; preview.autoplay = true;
 preview.className = 'preview';
 
+/**
+ * What the camera shows right now, and a question about it, as one task: the
+ * photo is attached to the question, so the answer is about that picture. False
+ * when nothing was sent.
+ */
+export async function askAboutPhoto(ctx: Ctx, question: string): Promise<boolean> {
+  if (ctx.busy) return false;
+  // The frame first, then the busy screen: a rebuild moves the preview.
+  const blob = await ctx.camera.capture(preview);
+  if (!blob) {ctx.toast(ctx.camera.running ? 'The camera has not produced a frame yet.' : 'Start the camera first, then ask.'); return false;}
+  ctx.busy = true; ctx.rerender();
+  try {
+    const artifact = await api.upload(blob, `Photo ${new Date().toLocaleString()}.jpg`);
+    await api.execute(question, {source: 'phone', attachments: [artifact.id]}, newIdempotencyKey());
+    await ctx.refresh();
+    ctx.toast('Photo sent.');
+    return true;
+  } catch (err) {
+    ctx.toast(err instanceof Error ? err.message : 'The photo could not be sent.');
+    return false;
+  } finally {
+    ctx.busy = false; ctx.rerender();
+  }
+}
+
 /** Hand a task to the employee. Shared by typing, dictation and the camera. */
 export async function sendTask(ctx: Ctx, task: string, visual?: string) {
   if (!task.trim() || ctx.busy) return;
@@ -43,9 +69,6 @@ export async function sendTask(ctx: Ctx, task: string, visual?: string) {
 export function today(ctx: Ctx): HTMLElement {
   const run = activeRun(ctx.state.run);
   const approvals = liveApprovals(ctx.state.approval);
-  const cam = ctx.camera.state;
-
-  if (preview.srcObject !== cam.stream) preview.srcObject = cam.stream;
 
   const send = async (task: string, visual?: string) => {
     if (!task.trim() || ctx.busy) return;
@@ -130,6 +153,9 @@ export function today(ctx: Ctx): HTMLElement {
 
 export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) => Promise<void>): HTMLElement {
   const cam = ctx.camera.state;
+  // Here, not in the Today screen: the Camera tab shows this same panel, and a
+  // camera started there was never shown or captured (a black preview).
+  if (preview.srcObject !== cam.stream) preview.srcObject = cam.stream;
   const live = ctx.session.live;
 
   const startCamera = async () => {const s = await ctx.camera.start(); if (s.stream && live) await ctx.session.publishCamera(s.stream.getVideoTracks()[0]!); ctx.rerender();};
@@ -142,18 +168,7 @@ export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) =>
     if (s.stream && live) await ctx.session.publishCamera(s.stream.getVideoTracks()[0]!);
     ctx.rerender();
   };
-  const capture = async () => {
-    const blob = await ctx.camera.capture(preview);
-    if (!blob) {ctx.toast('The camera has not produced a frame yet.'); return;}
-    try {
-      const artifact = await api.upload(blob, `Photo ${new Date().toLocaleString()}.jpg`);
-      await api.execute('Look at the attached photo and tell me what you see.', {source: 'phone', attachments: [artifact.id]}, newIdempotencyKey());
-      await ctx.refresh();
-      ctx.toast('Photo sent.');
-    } catch (err) {
-      ctx.toast(err instanceof Error ? err.message : 'The photo could not be sent.');
-    }
-  };
+  const capture = () => askAboutPhoto(ctx, 'Look at the attached photo and tell me what you see.');
 
   return h('section', {class: 'card camera'},
     cam.stream ? preview : h('div', {class: 'preview placeholder'}, h('p', {text: cam.error ? cameraMessage[cam.error] : 'Camera is off.'})),
@@ -255,7 +270,7 @@ function recent(ctx: Ctx): HTMLElement | null {
     ...done.map(r => h('div', {class: 'row-item'},
       h('p', {class: 'task', text: runTitle(r)}),
       // The answer belongs where the question was asked, not only under Tasks.
-      r.result ? h('p', {class: 'result-text', text: r.result.length > 280 ? `${r.result.slice(0, 280)}…` : r.result}) : null,
+      r.result ? h('p', {class: 'result-text'}, ...richText(r.result.length > 280 ? `${r.result.slice(0, 280)}…` : r.result)) : null,
       h('p', {class: 'note', text: `${relativeTime(r.completedAt ?? r.createdAt)} · ${STATUS_LABEL[r.status]}`}))),
     h('button', {class: 'ghost', onclick: () => ctx.go('tasks')}, 'See all tasks'),
   );

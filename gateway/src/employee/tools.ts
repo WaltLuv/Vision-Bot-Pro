@@ -46,7 +46,7 @@ export class ToolGateway {
   };
   assertAuthorized();this.db.put(owner,'action',{...action,status:'executing'});this.db.event(owner,'tool.started',{runId,tool:name,actionId:action.id});
   try{const result=await tool.run(args,{owner,runId,actionId:action.id,assertAuthorized});
-   if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:'completed',result});this.db.create(owner,'artifact',{runId,kind:'tool_receipt',name:tool.description,data:result});this.db.event(owner,'tool.completed',{runId,tool:name,actionId:action.id});}return result;
+   if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:'completed',result});this.db.create(owner,'artifact',{runId,kind:'tool_receipt',name:tool.title??tool.description,data:result});this.db.event(owner,'tool.completed',{runId,tool:name,actionId:action.id});}return result;
   }catch(e){if(this.db.get(owner,'run',runId)){this.db.put(owner,'action',{...action,status:tool.effect==='read'||e instanceof Refused?'failed':'uncertain'});this.db.event(owner,'tool.failed',{runId,tool:name});}throw e;}
  }
  async wait(owner:string,runId:string,name:string,args:unknown,key:string,signal:AbortSignal){let result=await this.invoke(owner,runId,name,args,key);while(result.approvalId){signal.throwIfAborted();const a=this.db.get(owner,'approval',result.approvalId);if(a?.status==='pending'&&a.expiresAt>Date.now())await new Promise(r=>setTimeout(r,300));else result=await this.invoke(owner,runId,name,args,key);}const run=this.db.get(owner,'run',runId);if(run?.status==='needs_user'&&!signal.aborted)this.db.put(owner,'run',{...run,status:'working'});return result;}

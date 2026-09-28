@@ -27,12 +27,13 @@ function suppliersCard(ctx: Ctx): HTMLElement {
 // model names stay out of the product surface: which engine runs the work is a
 // server-side decision, and naming vendors here would invite the impression it
 // is a user setting.
-const CAPABILITIES: {key: 'realtime' | 'sms' | 'voice' | 'browser'; label: string; blurb: string}[] = [
+const CAPABILITIES: {key: 'realtime' | 'sms' | 'voice' | 'browser' | 'search'; label: string; blurb: string}[] = [
   {key: 'realtime', label: 'Voice and camera conversation', blurb: 'Talk to it and let it see what you see.'},
   {key: 'sms', label: 'Text messages', blurb: 'Drafts a message and sends it only after you approve.'},
   {key: 'voice', label: 'Phone calls', blurb: 'Places a call with an objective you approve first.'},
 
   {key: 'browser', label: 'Using a browser', blurb: 'Works through sites on your behalf, with the session under your control.'},
+  {key: 'search', label: 'Searching the web', blurb: 'Looks things up when a task needs it. Without it, give it a web address to read.'},
 ];
 
 let installPrompt: (Event & {prompt(): Promise<void>}) | null = null;

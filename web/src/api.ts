@@ -56,7 +56,7 @@ export interface Connections {
   /** The engine this owner's tasks will actually run on; the server decides. */
   runtime?: 'hermes' | 'anthropic' | 'claude';
   realtime: boolean; hermes: boolean; anthropic: boolean; claude?: boolean; sms: boolean; voice: boolean;
-  products: boolean; browser: boolean; suppliers: SupplierConnection[];
+  products: boolean; browser: boolean; search?: boolean; suppliers: SupplierConnection[];
   mcp: {id: string; tools: string[]}[]; mcpError?: string;
 }
 

@@ -22,11 +22,11 @@ export function approvalCard(approval: Approval, after: () => void, fail: (messa
 
   const rows = approvalRows(approval, contacts);
   return h('section', {class: `card approval ${financial ? 'financial' : ''}`},
-    h('p', {class: 'eyebrow', text: EFFECT_LABEL[approval.effect] ?? 'Needs your approval'}),
+    h('p', {class: 'eyebrow', text: answering ? 'A question for you' : EFFECT_LABEL[approval.effect] ?? 'Needs your approval'}),
     h('h3', {text: approval.label || approval.tool}),
     rows.length ? h('dl', {class: 'terms'}, ...rows.flatMap(r => [h('dt', {text: r.label}), h('dd', {text: r.value})])) : null,
     answer,
-    h('p', {class: 'note', text: financial ? 'Nothing is bought until you authorise these exact terms.' : 'This runs only if you allow it.'}),
+    h('p', {class: 'note', text: answering ? 'Your employee carries on once you answer.' : financial ? 'Nothing is bought until you authorise these exact terms.' : 'This runs only if you allow it.'}),
     h('div', {class: 'row'},
       h('button', {class: 'primary', onclick: () => void decide('once')}, answering ? 'Send answer' : 'Allow once'),
       h('button', {class: 'ghost', onclick: () => void decide('deny')}, 'Not now'),

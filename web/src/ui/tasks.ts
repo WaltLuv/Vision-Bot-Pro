@@ -2,6 +2,7 @@ import {api, type Row, type Run} from '../api';
 import {h} from '../dom';
 import {canResume, isTerminal, money, relativeTime, runArtifacts, runTitle, sortRuns, STATUS_LABEL, unreconciledActions} from '../store';
 import {materialSection} from './offers';
+import {richText} from '../rich';
 import type {Ctx} from './ctx';
 
 export function tasks(ctx: Ctx): HTMLElement {
@@ -16,7 +17,7 @@ function taskCard(ctx: Ctx, run: Run): HTMLElement {
   return h('section', {class: 'card'},
     h('p', {class: 'eyebrow', text: `${STATUS_LABEL[run.status]} · ${relativeTime(run.completedAt ?? run.createdAt)}`}),
     h('h3', {text: runTitle(run)}),
-    run.result ? h('p', {class: 'result-text', text: run.result}) : null,
+    run.result ? h('p', {class: 'result-text'}, ...richText(run.result)) : null,
     run.error ? h('p', {class: 'note', text: run.error}) : null,
     stuck.length ? reconcilePanel(ctx, stuck[0]!.id, !isTerminal(run)) : null,
     // A supplier comparison belongs with the task that asked for it, so the

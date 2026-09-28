@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Run Vision-Bot-Pro on this computer.
 #
-#     bash deploy/local.sh
+#     bash deploy/local.sh            (sets up on the first run, then just starts it)
+#     bash deploy/local.sh --setup    (offers the optional extras again)
 #
 # The first run asks for what it needs and sets everything up; later runs just
-# start it. Nothing here needs root. Written for macOS and Linux.
+# start it, asking only for something required that is missing. Nothing here needs root. Written for macOS and Linux.
 #
 # Who does the work -- whichever this computer has:
 #   Claude Code, signed in with your own Claude subscription. You sign in
@@ -21,6 +22,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT/gateway/.env"
 DATA="$ROOT/data"
+# The optional extras are offered on the first run, or when asked for. A later
+# start that asked them all again, because some were skipped, was not "just start it".
+OFFER_EXTRAS=false
+if ! grep -q '^GATEWAY_TOKENS=' "$ENV_FILE" 2>/dev/null || [ "${1:-}" = "--setup" ]; then OFFER_EXTRAS=true; fi
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
@@ -39,6 +44,8 @@ ask() {
   fi
   printf '%s' "$v"
 }
+# offer VAR "Question" [secret]: like ask, for something optional -- asked only when extras are being offered.
+offer() { if [ "$OFFER_EXTRAS" = true ]; then ask "$@"; else setting "$1"; fi; }
 random() { node -e "process.stdout.write(require('crypto').randomBytes($1).toString('hex'))"; }
 
 # --- what must already be here -------------------------------------------
@@ -150,22 +157,25 @@ info "Work runs on: $WORK"
 
 # --- everything else it can do ----------------------------------------------
 
-say "What else it can do"
-if interactive; then info "Leave any of these blank to skip it; you can add it to gateway/.env later."; fi
+if [ "$OFFER_EXTRAS" = true ]; then
+  say "What else it can do"
+  if interactive; then info "Leave any of these blank to skip it. Run this again with --setup to be asked again, or add it to gateway/.env."; fi
+fi
 [ -n "$GEMINI_KEY" ] || GEMINI_KEY="$(setting GEMINI_API_KEY)"
 GOOGLE_KEY="$(setting GOOGLE_API_KEY)"
 [ -n "$GOOGLE_KEY" ] || GOOGLE_KEY="$GEMINI_KEY"
-[ -n "$GOOGLE_KEY" ] || GOOGLE_KEY="$(ask GOOGLE_API_KEY 'Gemini API key, so it can talk and see' secret)"
-LK_URL="$(ask LIVEKIT_URL 'LiveKit URL, for the live voice and camera (wss://...)')"
+[ -n "$GOOGLE_KEY" ] || GOOGLE_KEY="$(offer GOOGLE_API_KEY 'Gemini API key, so it can talk and see' secret)"
+LK_URL="$(offer LIVEKIT_URL 'LiveKit URL, for the live voice and camera (wss://...)')"
 LK_KEY=""; LK_SECRET=""
-if [ -n "$LK_URL" ]; then LK_KEY="$(ask LIVEKIT_API_KEY 'LiveKit API key')"; LK_SECRET="$(ask LIVEKIT_API_SECRET 'LiveKit API secret' secret)"; fi
-BB_KEY="$(ask BROWSERBASE_API_KEY 'Browserbase API key, for a browser you can watch and take over' secret)"
-TW_SID="$(ask TWILIO_ACCOUNT_SID 'Twilio account SID, for text messages')"
+if [ -n "$LK_URL" ]; then LK_KEY="$(offer LIVEKIT_API_KEY 'LiveKit API key')"; LK_SECRET="$(offer LIVEKIT_API_SECRET 'LiveKit API secret' secret)"; fi
+BB_KEY="$(offer BROWSERBASE_API_KEY 'Browserbase API key, for a browser you can watch and take over' secret)"
+SEARCH_KEY="$(offer SEARCH_API_KEY 'Brave Search API key, so it can search the web' secret)"
+TW_SID="$(offer TWILIO_ACCOUNT_SID 'Twilio account SID, for text messages')"
 TW_TOKEN=""; TW_FROM=""
-if [ -n "$TW_SID" ]; then TW_TOKEN="$(ask TWILIO_AUTH_TOKEN 'Twilio auth token' secret)"; TW_FROM="$(ask TWILIO_FROM 'Twilio number to send from (+1...)')"; fi
-RT_KEY="$(ask RETELL_API_KEY 'Retell API key, for phone calls' secret)"
+if [ -n "$TW_SID" ]; then TW_TOKEN="$(offer TWILIO_AUTH_TOKEN 'Twilio auth token' secret)"; TW_FROM="$(offer TWILIO_FROM 'Twilio number to send from (+1...)')"; fi
+RT_KEY="$(offer RETELL_API_KEY 'Retell API key, for phone calls' secret)"
 RT_FROM=""; RT_AGENT=""
-if [ -n "$RT_KEY" ]; then RT_FROM="$(ask RETELL_FROM 'Retell number to call from (+1...)')"; RT_AGENT="$(ask RETELL_AGENT_ID 'Retell agent ID')"; fi
+if [ -n "$RT_KEY" ]; then RT_FROM="$(offer RETELL_FROM 'Retell number to call from (+1...)')"; RT_AGENT="$(offer RETELL_AGENT_ID 'Retell agent ID')"; fi
 
 VOICE=false
 if [ -n "$LK_URL" ] && [ -n "$LK_KEY" ] && [ -n "$LK_SECRET" ] && [ -n "$GOOGLE_KEY" ]; then VOICE=true; fi
@@ -190,7 +200,7 @@ ROUTES="$(setting COMMUNICATION_ROUTES)"
 if [ -z "$ROUTES" ] && [ -n "$TW_FROM" ]; then ROUTES="{\"$TW_FROM\":\"$OWNER\"}"; fi
 
 # Anything else already in the file is kept exactly as it was.
-MANAGED=" PORT HOST PUBLIC_BASE_URL GATEWAY_TOKENS STATE_SECRET GATEWAY_SERVICE_TOKEN REGISTRATION_OPEN STORE_PATH EMPLOYEE_DATA_DIR AGENT_RUNTIME CLAUDE_CODE_OWNER CLAUDE_CODE_BIN HERMES_CHECKOUT HERMES_PYTHON HERMES_PROVIDER HERMES_MODEL HERMES_BASE_URL HERMES_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET BROWSERBASE_API_KEY TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM COMMUNICATION_ROUTES RETELL_API_KEY RETELL_FROM RETELL_AGENT_ID "
+MANAGED=" PORT HOST PUBLIC_BASE_URL GATEWAY_TOKENS STATE_SECRET GATEWAY_SERVICE_TOKEN REGISTRATION_OPEN STORE_PATH EMPLOYEE_DATA_DIR AGENT_RUNTIME CLAUDE_CODE_OWNER CLAUDE_CODE_BIN HERMES_CHECKOUT HERMES_PYTHON HERMES_PROVIDER HERMES_MODEL HERMES_BASE_URL HERMES_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET BROWSERBASE_API_KEY SEARCH_API_KEY TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM COMMUNICATION_ROUTES RETELL_API_KEY RETELL_FROM RETELL_AGENT_ID "
 EXTRA=""
 if [ -f "$ENV_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -226,7 +236,7 @@ umask 077
   printf '\n# Talking and seeing, a browser, texts and calls.\n'
   put GOOGLE_API_KEY "$GOOGLE_KEY"
   put LIVEKIT_URL "$LK_URL"; put LIVEKIT_API_KEY "$LK_KEY"; put LIVEKIT_API_SECRET "$LK_SECRET"
-  put BROWSERBASE_API_KEY "$BB_KEY"
+  put BROWSERBASE_API_KEY "$BB_KEY"; put SEARCH_API_KEY "$SEARCH_KEY"
   put TWILIO_ACCOUNT_SID "$TW_SID"; put TWILIO_AUTH_TOKEN "$TW_TOKEN"; put TWILIO_FROM "$TW_FROM"; put COMMUNICATION_ROUTES "$ROUTES"
   put RETELL_API_KEY "$RT_KEY"; put RETELL_FROM "$RT_FROM"; put RETELL_AGENT_ID "$RT_AGENT"
   if [ -n "$EXTRA" ]; then printf '\n# Your other settings, kept as they were.\n%s' "$EXTRA"; fi
@@ -318,6 +328,7 @@ printf '  Access code   %s\n' "$CODE"
 printf '  Work          %s\n' "$WORK"
 printf '  Talk and see  %s\n' "$TALK"
 printf '  Browser       %s\n' "$(on "$BB_KEY$(setting BROWSER_USE_API_KEY)")"
+printf '  Web search    %s\n' "$(on "$SEARCH_KEY")"
 printf '  Texts         %s\n' "$(on "$TW_TOKEN")"
 printf '  Calls         %s\n' "$(on "$RT_KEY")"
 if [ -n "$TW_TOKEN$RT_KEY" ]; then
