@@ -30,8 +30,9 @@ export function login(onDone: (owner: string) => void): HTMLElement {
 
   return h('div', {class: 'screen centered'},
     h('section', {class: 'card'},
-      h('h1', {class: 'brand', text: 'Vision-Bot-Pro'}),
-      h('p', {class: 'note', text: 'Sign in with the access code for this server.'}),
+      h('h1', {class: 'brand', text: 'VisionBot Pro'}),
+      h('p', {class: 'note', text: 'The field assistant for VisionOps. Sign in with Google, use an access code, or start a preview.'}),
+      h('a', {class: 'primary', href: '/auth/google', text: 'Continue with Google'}),
       field, message,
       h('div', {class: 'row'}, button),
     ),
