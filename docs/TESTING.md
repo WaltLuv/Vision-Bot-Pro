@@ -334,6 +334,48 @@ on every start.
 suppliers' real partner APIs, LiveKit Cloud, and the app on a real phone over
 https.
 
+## The published preview (`web/demo`)
+
+The preview is the real phone app built with an in-page stand-in for the
+gateway, as one self-contained page (`npm run build:demo` writes
+`web/demo-dist/vision-bot-pro.html`) published as a claude.ai artifact. The
+screens, their rules and their styles are the app's own. The stand-in answers
+every route the app calls with the gateway's shapes and announces changes on
+the event stream, and anything that texts, calls, browses or spends money
+waits on an approval the owner decides in the app, as on the gateway.
+
+Inside a claude.ai viewer, Claude does the tasks through the page's `sample`
+capability, on the viewer's own account and after the viewer allows it. It gets
+what a runtime gets from the gateway (the employee, its skills, memory,
+contacts, recent results and the latest comparison) plus tools that raise the
+app's own approvals: send a text, place a call, compare prices, buy against an
+exact quote, use the browser, ask the owner, remember. Anywhere else, or when
+the viewer declines, a scripted employee runs the same tools for a fixed set of
+tasks and says so.
+
+Simulated, and labelled on the page: texts and calls reach nobody, supplier
+prices come from sample catalogs, orders buy nothing, and the browser is a
+sample shop site drawn in the app's live view (a published page cannot frame
+another site), which can be watched, taken over, typed into and handed back.
+The camera is a drawn scene or a photo the viewer picks ("Use my photo"),
+because a published page cannot open a camera. Voice conversation is not in
+the preview: it needs LiveKit and Gemini Live on a server.
+
+Checked with `npm run build:demo && npm run check:demo`: 31 checks in a
+phone-sized Chromium, the page wrapped as the artifact host wraps it, under a
+content policy that refuses every network request. Three passes: no Claude; a
+stand-in for the viewer's `sample` that calls the page's tools the way Claude
+does (tool list, size limits, no caching with tools, approvals, answers, tool
+errors, a photo passed as an image); and a viewer who declines Claude.
+
+Found and fixed in the app along the way: after switching to a screen without
+the camera and back, the preview stayed paused on its old frame, so "Send
+photo" and "Ask about this" sent a stale picture (`camera-screen.test.ts`).
+
+**Not verified here**: a real `sample` call inside a claude.ai viewer (its
+consent prompt, tool rounds and image limits), and the viewer's own frame
+policies beyond what the page contract states.
+
 ## Installer and doctor
 
 `deploy/install.sh` and `deploy/doctor.sh` were run for real in a fresh clone,

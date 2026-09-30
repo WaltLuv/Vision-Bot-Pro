@@ -12,7 +12,8 @@
     "test": "vitest run",
     "verify": "npm run build && vitest run",
     "e2e": "node e2e/run.mjs",
-    "build:demo": "vite build --config demo/vite.config.ts"
+    "build:demo": "vite build --config demo/vite.config.ts && node demo/page.mjs",
+    "check:demo": "node demo/check.mjs"
   },
   "dependencies": {
     "livekit-client": "^2.9.0"

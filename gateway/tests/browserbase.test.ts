@@ -57,13 +57,15 @@ function browserbaseApi(connectUrl:string){
  return new Promise<typeof seen&{url:string;close():void}>(r=>server.on('listening',()=>r({...seen,url:`http://127.0.0.1:${(server.address() as any).port}`,close:()=>{server.closeAllConnections();server.close();}})));
 }
 
+// Its profile can only be removed once it has exited; its helper processes may still be letting go of files, so the removal retries briefly.
+const stopChromium=async(proc:ChildProcess)=>{if(proc.exitCode!==null||proc.signalCode!==null)return;const exited=new Promise(r=>proc.once('exit',r));proc.kill('SIGKILL');await exited;};
 const waitFor=async(check:()=>boolean,what:string,ms=15000)=>{const end=Date.now()+ms;while(Date.now()<end){if(check())return;await new Promise(r=>setTimeout(r,20));}throw Error(`Timed out waiting for ${what}`);};
 
 test('the employee drives a Browserbase browser step by step, and never spends or types a secret',{skip,timeout:120000},async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'vc-bb-')),site=await shop(),remote=await chromium(dir),api=await browserbaseApi(remote.ws);
  const saved={key:process.env.BROWSERBASE_API_KEY,base:process.env.BROWSERBASE_API_BASE};process.env.BROWSERBASE_API_KEY=KEY;process.env.BROWSERBASE_API_BASE=api.url;
  const db=new Store(':memory:'),tools=new ToolGateway(db),bb=new BrowserbaseBrowsers(db),computers=new BrowserCapability(db,bb);bb.register(tools);
- t.after(async()=>{db.close();site.close();api.close();remote.proc.kill('SIGKILL');rmSync(dir,{recursive:true,force:true});for(const [k,v] of [['BROWSERBASE_API_KEY',saved.key],['BROWSERBASE_API_BASE',saved.base]] as const)if(v===undefined)delete process.env[k];else process.env[k]=v;});
+ t.after(async()=>{db.close();site.close();api.close();await stopChromium(remote.proc);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});for(const [k,v] of [['BROWSERBASE_API_KEY',saved.key],['BROWSERBASE_API_BASE',saved.base]] as const)if(v===undefined)delete process.env[k];else process.env[k]=v;});
  const run=db.put('alice','run',{id:'run-1',task:'Find a Moen 1222 cartridge',status:'working'});
  let n=0;const use=(name:string,args:object={})=>tools.wait('alice',run.id,name,args,`k${++n}`,AbortSignal.timeout(60000));
 
@@ -146,7 +148,7 @@ test('a finished task releases its browser, and nothing opens without a key',{sk
  const dir=mkdtempSync(path.join(os.tmpdir(),'vc-bb-')),remote=await chromium(dir),api=await browserbaseApi(remote.ws);
  const saved={key:process.env.BROWSERBASE_API_KEY,base:process.env.BROWSERBASE_API_BASE};process.env.BROWSERBASE_API_KEY=KEY;process.env.BROWSERBASE_API_BASE=api.url;
  const db=new Store(':memory:'),tools=new ToolGateway(db),bb=new BrowserbaseBrowsers(db),computers=new BrowserCapability(db,bb);bb.register(tools);
- t.after(async()=>{db.close();api.close();remote.proc.kill('SIGKILL');rmSync(dir,{recursive:true,force:true});for(const [k,v] of [['BROWSERBASE_API_KEY',saved.key],['BROWSERBASE_API_BASE',saved.base]] as const)if(v===undefined)delete process.env[k];else process.env[k]=v;});
+ t.after(async()=>{db.close();api.close();await stopChromium(remote.proc);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});for(const [k,v] of [['BROWSERBASE_API_KEY',saved.key],['BROWSERBASE_API_BASE',saved.base]] as const)if(v===undefined)delete process.env[k];else process.env[k]=v;});
  db.put('alice','policy',{id:'p1',tool:'browser_open',policy:'allow'});
  const run=db.put('alice','run',{id:'run-2',task:'Look something up',status:'working'});
  const opened=await tools.wait('alice',run.id,'browser_open',{purpose:'Look something up'},'k1',AbortSignal.timeout(60000));

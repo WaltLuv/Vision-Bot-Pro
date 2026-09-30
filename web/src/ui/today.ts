@@ -156,6 +156,10 @@ export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) =>
   // Here, not in the Today screen: the Camera tab shows this same panel, and a
   // camera started there was never shown or captured (a black preview).
   if (preview.srcObject !== cam.stream) preview.srcObject = cam.stream;
+  // A screen without the camera takes the preview out of the page, and the
+  // browser pauses it. Put back, it stayed on that old frame, and a photo taken
+  // then was of the past, so it plays again as soon as it is shown.
+  if (cam.stream) queueMicrotask(() => {if (preview.isConnected && preview.paused) preview.play()?.catch(() => {});});
   const live = ctx.session.live;
 
   const startCamera = async () => {const s = await ctx.camera.start(); if (s.stream && live) await ctx.session.publishCamera(s.stream.getVideoTracks()[0]!); ctx.rerender();};

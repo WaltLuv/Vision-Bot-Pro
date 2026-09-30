@@ -58,4 +58,17 @@ describe('camera: the preview', () => {
     mount(document.getElementById('app')!, camera(ctx));
     expect(document.querySelector<HTMLVideoElement>('video.preview')!.srcObject).toBe(stream);
   });
+
+  // Another tab takes the preview out of the page and the browser pauses it;
+  // back on the camera it stayed frozen, and "Send photo" sent that old frame.
+  it('plays again when it comes back on screen', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    const {ctx} = makeCtx(null);
+    (ctx.camera as unknown as {state: {stream: MediaStream}}).state.stream = {id: 'camera-stream'} as unknown as MediaStream;
+    document.body.innerHTML = '<div id="app"></div>';
+    mount(document.getElementById('app')!, camera(ctx));
+    await Promise.resolve();
+    expect(play).toHaveBeenCalled();
+    play.mockRestore();
+  });
 });
