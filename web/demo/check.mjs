@@ -318,10 +318,14 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     await snap(p, 'settings');
   });
 
-  await check(p, 'signing out shows the sign-in screen, and any code signs back in', async () => {
+  await check(p, 'signing out shows the sign-in screen, Google sign-in says it is not in the preview, and any code signs back in', async () => {
     await p.getByRole('button', {name: 'Sign out'}).click();
     await p.getByLabel('Access code').waitFor();
     await until(p, 'Preview: any access code signs you in.');
+    // The sign-in screen's Google button leads to the gateway, which the preview does not have.
+    await p.getByRole('link', {name: 'Continue with Google'}).click();
+    await until(p, 'Google sign-in is not part of this preview');
+    expect(p.url() === url, `left the preview for ${p.url()}`);
     await p.getByLabel('Access code').fill('hello');
     await p.getByRole('button', {name: 'Sign in'}).click();
     await p.getByRole('tab', {name: 'Today'}).waitFor();

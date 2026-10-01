@@ -37,14 +37,16 @@ export function installPreviewChrome(options: {usePhoto?: (file: File) => Promis
     h('span', {class: 'preview-actions'}, photoButton, h('button', {class: 'preview-button', type: 'button', onclick: () => options.reset()}, 'Reset'), picker)));
   setSignedIn(preview.signedIn);
 
-  // Evidence opens in a new tab on the gateway, and an offer at its supplier.
-  // A published page has neither, so evidence opens over the app and a sample
-  // offer says what it is.
+  // Evidence opens in a new tab on the gateway, an offer at its supplier, and
+  // Google sign-in on the gateway. A published page has none of them, so
+  // evidence opens over the app and the others say what they are.
   document.addEventListener('click', event => {
     const link = (event.target as Element | null)?.closest?.('a');
     const href = link?.getAttribute('href') ?? '';
     if (href.startsWith('/api/artifacts/')) {event.preventDefault(); showEvidence(decodeURIComponent(href.split('/')[3] ?? ''));}
     else if (href === 'https://example.com/') {event.preventDefault(); toast('This is a sample offer, so there is no product page. In the app this opens the supplier\'s own page.');}
+    // Leaving for the gateway's Google sign-in would leave the preview itself.
+    else if (href.startsWith('/auth/')) {event.preventDefault(); toast('Google sign-in is not part of this preview. Type any access code to sign in.');}
   }, true);
 
   installConfirm();
