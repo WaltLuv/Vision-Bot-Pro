@@ -86,7 +86,9 @@ if ! hermes_loads && command -v hermes >/dev/null; then
   HERMES_DIR="$("$HERMES_PY" -c 'import os, run_agent; print(os.path.dirname(os.path.abspath(run_agent.__file__)))' 2>/dev/null || true)"
 fi
 if ! hermes_loads; then
-  found="$(find "$HOME" /opt -maxdepth 6 -name run_agent.py -not -path '*/node_modules/*' 2>/dev/null | head -1 || true)"
+  # Not into the folders macOS asks permission for, which would put a dialog up for each.
+  found="$(find "$HOME" /opt -maxdepth 6 \( -path "$HOME/Library" -o -path "$HOME/Desktop" -o -path "$HOME/Documents" -o -path "$HOME/Downloads" \
+    -o -path "$HOME/Pictures" -o -path "$HOME/Movies" -o -path "$HOME/Music" -o -name node_modules \) -prune -o -name run_agent.py -print 2>/dev/null | head -1 || true)"
   if [ -n "$found" ]; then
     HERMES_DIR="$(dirname "$found")"
     for candidate in "$HERMES_DIR/../../../bin/python" "$HERMES_DIR/.venv/bin/python" "$(command -v python3 || true)"; do
@@ -262,8 +264,13 @@ info "gateway ready"
 if ! { install_deps "$ROOT/web" && (cd "$ROOT/web" && npm run build); } >"$LOG" 2>&1; then bad "Building the app failed:"; tail -n 20 "$LOG" >&2; exit 1; fi
 info "app built"
 if [ "$VOICE" = true ]; then
-  PY3="$(command -v python3 || true)"
-  if [ -z "$PY3" ]; then info "Talking needs Python 3, which is not installed; everything else still works."; VOICE=false
+  # The voice worker needs Python 3.10 to 3.14. A Mac's own python3 is 3.9, so a newer one is looked for by name first.
+  PY3=""
+  for name in python3.12 python3.13 python3.11 python3.10 python3.14 python3; do
+    candidate="$(command -v "$name" || true)"
+    if [ -n "$candidate" ] && "$candidate" -c 'import sys; sys.exit(not (3, 10) <= sys.version_info[:2] < (3, 15))' >/dev/null 2>&1; then PY3="$candidate"; break; fi
+  done
+  if [ -z "$PY3" ]; then info "Talking needs Python 3.10 or newer (https://www.python.org/downloads/), which is not installed; everything else still works."; VOICE=false
   elif ! cmp -s "$ROOT/agent/requirements.txt" "$ROOT/agent/.venv/.vision-bot-installed" 2>/dev/null; then
     if { "$PY3" -m venv "$ROOT/agent/.venv" && "$ROOT/agent/.venv/bin/pip" install -q -r "$ROOT/agent/requirements.txt" && cp "$ROOT/agent/requirements.txt" "$ROOT/agent/.venv/.vision-bot-installed"; } >"$LOG" 2>&1; then info "voice worker ready"
     else bad "Setting up the voice worker failed; everything else still works:"; tail -n 10 "$LOG" >&2; VOICE=false; fi

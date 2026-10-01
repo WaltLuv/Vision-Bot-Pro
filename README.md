@@ -82,7 +82,7 @@ optional extras again.
 
 | To let it... | It asks for |
 |---|---|
-| talk and see (voice and camera) | a Gemini API key and a LiveKit server; it then builds and starts the voice worker beside the app |
+| talk and see (voice and camera) | a Gemini API key and a LiveKit server; it then builds and starts the voice worker beside the app (this needs Python 3.10 or newer, which a Mac does not come with) |
 | use a browser you can watch and take over | a Browserbase API key |
 | search the web | a Brave Search API key |
 | send texts | a Twilio account SID, auth token and number |
