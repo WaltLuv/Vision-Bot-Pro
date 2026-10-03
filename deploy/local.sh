@@ -351,6 +351,7 @@ printf '  Work          %s\n' "$WORK"
 printf '  Talk and see  %s\n' "$TALK"
 printf '  Browser       %s\n' "$(on "$BB_KEY$(setting BROWSER_USE_API_KEY)")"
 if [ -z "$SEARCH_KEY" ] && [ -n "$GOOGLE_KEY$GEMINI_KEY" ]; then printf '  Web search    on, through Google with your Gemini key\n'; else printf '  Web search    %s\n' "$(on "$SEARCH_KEY")"; fi
+case "$(setting WEB_PRICE_CHECK)" in off|false|0|no) ;; *) if [ -n "$GOOGLE_KEY$GEMINI_KEY" ]; then printf "  Store prices  Home Depot, Lowe's, Amazon, Walmart, through Google\n"; fi ;; esac
 printf '  Texts         %s\n' "$(on "$TW_TOKEN")"
 printf '  Calls         %s\n' "$(on "$RT_KEY")"
 printf '  Google login  %s\n' "$(on "$CK_SECRET")"
