@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 // file that can be inlined into a published page.
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
+  // Relative asset paths, so the same build also works served at the gateway's /preview/.
+  base: './',
   resolve: {alias: {'livekit-client': fileURLToPath(new URL('./livekit-stub.ts', import.meta.url))}},
   build: {
     outDir: fileURLToPath(new URL('../demo-dist', import.meta.url)),

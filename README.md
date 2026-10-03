@@ -82,10 +82,25 @@ optional extras again.
 | search the web | a Brave Search API key |
 | send texts | a Twilio account SID, auth token and number |
 | place calls | a Retell API key, number and agent ID |
+| let people sign in with Google | a Clerk publishable key and secret key, your Google email, and any other Google accounts to let in |
 
 One Gemini key serves both voice and, if you pick `gemini`, Hermes. Suppliers
 and connected tools are set in `gateway/.env`; see
 [docs/OWNER-ACTIONS.md](docs/OWNER-ACTIONS.md).
+
+**Signing in with Google.** Create a free application at
+[dashboard.clerk.com](https://dashboard.clerk.com) with Google turned on, copy
+its publishable key and secret key (API keys), and give them to
+`bash deploy/local.sh --setup`. A Clerk development instance uses
+[Clerk's own Google credentials](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/google),
+so there is nothing to set up at Google. The sign-in screen then offers
+**Continue with Google**. Your own Google email signs in to your employee; each
+other email you list (or anyone at a listed `@domain`) gets an employee of its
+own, kept apart from yours; anyone else is turned away. Taking an email off the
+list ends its sessions. Access codes keep working beside it. A Clerk
+development instance is for trying it out and demos: for clients' everyday use,
+move to a Clerk production instance, which needs a domain of your own and your
+own Google OAuth client.
 
 **Texts and calls.** They go out from your computer, but replies, delivery
 updates and call results come back only to a public https address. Set

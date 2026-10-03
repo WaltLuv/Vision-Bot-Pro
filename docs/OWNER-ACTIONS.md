@@ -129,9 +129,17 @@ cannot work.
   anywhere else is named on screen instead, and can be allowed with
   `BROWSER_LIVE_VIEW_HOSTS` (host names, comma-separated).
 - **Connected tools (MCP)**: per-server configuration and its credentials.
-- **Google sign-in**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and
-  `PUBLIC_BASE_URL` registered as an authorised redirect URI on that OAuth
-  client.
+- **Google sign-in on the phone app**: a Clerk application with Google turned
+  on (https://dashboard.clerk.com). Set `CLERK_PUBLISHABLE_KEY`,
+  `CLERK_SECRET_KEY`, `CLERK_OWNER_EMAIL` (your own Google email) and, for
+  anyone else, `CLERK_ALLOWED_EMAILS`; `bash deploy/local.sh --setup` asks for
+  all four. A development instance uses Clerk's shared Google credentials, so
+  there is nothing to set up at Google. A production instance needs a domain of
+  your own and your own Google OAuth client, set in Clerk's dashboard. Until
+  the keys are set the sign-in screen offers access codes only.
+- **Google sign-in in the native iOS and Android apps**: `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET`, and `PUBLIC_BASE_URL` registered as an authorised
+  redirect URI on that OAuth client.
 
 ## Required before anyone is messaged or called
 

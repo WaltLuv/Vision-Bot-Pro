@@ -28,13 +28,19 @@ export function login(onDone: (owner: string) => void): HTMLElement {
   button.addEventListener('click', () => void submit());
   field.addEventListener('keydown', e => {if (e.key === 'Enter') void submit();});
 
+  // Google sign-in and the preview are offered only where this server has them,
+  // so neither can lead to a page that does not work.
+  const google = h('a', {class: 'primary', href: '/auth/google', text: 'Continue with Google', hidden: true});
+  const preview = h('a', {class: 'ghost', href: '/preview/', text: 'Start a preview', hidden: true});
+  api.signInOptions().then(o => {google.hidden = !o.google; preview.hidden = !o.preview;}).catch(() => {});
+
   return h('div', {class: 'screen centered'},
     h('section', {class: 'card'},
       h('h1', {class: 'brand', text: 'VisionBot Pro'}),
       h('p', {class: 'note', text: 'The field assistant for VisionOps. Sign in with Google, use an access code, or start a preview.'}),
-      h('a', {class: 'primary', href: '/auth/google', text: 'Continue with Google'}),
+      google,
       field, message,
-      h('div', {class: 'row'}, button),
+      h('div', {class: 'row wrap'}, button, preview),
     ),
   );
 }

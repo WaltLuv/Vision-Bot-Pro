@@ -96,6 +96,8 @@ export const newIdempotencyKey = () => crypto.randomUUID();
 export const api = {
   session: () => call<{owner: string; csrf: string}>('GET', '/api/session'),
   login: (token: string) => call<{owner: string; csrf: string}>('POST', '/api/auth/login', {token}),
+  /** Which other ways in this server offers, before anyone is signed in. */
+  signInOptions: () => call<{google: boolean; preview?: boolean}>('GET', '/api/auth/options'),
   logout: () => call<void>('POST', '/api/auth/logout'),
   state: () => call<State>('GET', '/api/state'),
   connections: () => call<Connections>('GET', '/api/connections'),

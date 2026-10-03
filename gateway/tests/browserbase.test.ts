@@ -35,7 +35,8 @@ function shop(){
 /** A real Chromium with a CDP endpoint, standing in for the remote browser. */
 function chromium(dir:string){
  return new Promise<{ws:string;proc:ChildProcess}>((resolve,reject)=>{
-  const proc=spawn(CHROMIUM,['--headless=new','--no-sandbox','--remote-debugging-port=0',`--user-data-dir=${dir}`,'--no-proxy-server','about:blank'],{stdio:['ignore','ignore','pipe']});
+  // A process group of its own, so stopping it stops its helper processes too, before they can write to the profile again.
+  const proc=spawn(CHROMIUM,['--headless=new','--no-sandbox','--remote-debugging-port=0',`--user-data-dir=${dir}`,'--no-proxy-server','--disable-breakpad','--disable-crash-reporter','about:blank'],{stdio:['ignore','ignore','pipe'],detached:true});
   let err='';proc.stderr!.on('data',d=>{err+=d;const m=err.match(/DevTools listening on (ws:\/\/\S+)/);if(m)resolve({ws:m[1]!,proc});});
   proc.on('exit',()=>reject(Error('Chromium exited: '+err.slice(-300))));
  });
@@ -58,7 +59,7 @@ function browserbaseApi(connectUrl:string){
 }
 
 // Its profile can only be removed once it has exited; its helper processes may still be letting go of files, so the removal retries briefly.
-const stopChromium=async(proc:ChildProcess)=>{if(proc.exitCode!==null||proc.signalCode!==null)return;const exited=new Promise(r=>proc.once('exit',r));proc.kill('SIGKILL');await exited;};
+const stopChromium=async(proc:ChildProcess)=>{if(proc.exitCode!==null||proc.signalCode!==null)return;const exited=new Promise(r=>proc.once('exit',r));try{process.kill(-proc.pid!,'SIGKILL');}catch{proc.kill('SIGKILL');}await exited;};
 const waitFor=async(check:()=>boolean,what:string,ms=15000)=>{const end=Date.now()+ms;while(Date.now()<end){if(check())return;await new Promise(r=>setTimeout(r,20));}throw Error(`Timed out waiting for ${what}`);};
 
 test('the employee drives a Browserbase browser step by step, and never spends or types a secret',{skip,timeout:120000},async t=>{

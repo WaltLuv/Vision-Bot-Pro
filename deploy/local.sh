@@ -178,6 +178,13 @@ if [ -n "$TW_SID" ]; then TW_TOKEN="$(offer TWILIO_AUTH_TOKEN 'Twilio auth token
 RT_KEY="$(offer RETELL_API_KEY 'Retell API key, for phone calls' secret)"
 RT_FROM=""; RT_AGENT=""
 if [ -n "$RT_KEY" ]; then RT_FROM="$(offer RETELL_FROM 'Retell number to call from (+1...)')"; RT_AGENT="$(offer RETELL_AGENT_ID 'Retell agent ID')"; fi
+CK_PUB="$(offer CLERK_PUBLISHABLE_KEY 'Clerk publishable key, so people can sign in with Google (pk_...)')"
+CK_SECRET=""; CK_OWNER=""; CK_ALLOWED=""
+if [ -n "$CK_PUB" ]; then
+  CK_SECRET="$(offer CLERK_SECRET_KEY 'Clerk secret key (sk_...)' secret)"
+  CK_OWNER="$(offer CLERK_OWNER_EMAIL 'Your Google email (it signs in to this same employee)')"
+  CK_ALLOWED="$(offer CLERK_ALLOWED_EMAILS 'Other Google accounts allowed in, comma-separated, each with an employee of its own (blank for none)')"
+fi
 
 VOICE=false
 if [ -n "$LK_URL" ] && [ -n "$LK_KEY" ] && [ -n "$LK_SECRET" ] && [ -n "$GOOGLE_KEY" ]; then VOICE=true; fi
@@ -202,7 +209,7 @@ ROUTES="$(setting COMMUNICATION_ROUTES)"
 if [ -z "$ROUTES" ] && [ -n "$TW_FROM" ]; then ROUTES="{\"$TW_FROM\":\"$OWNER\"}"; fi
 
 # Anything else already in the file is kept exactly as it was.
-MANAGED=" PORT HOST PUBLIC_BASE_URL GATEWAY_TOKENS STATE_SECRET GATEWAY_SERVICE_TOKEN REGISTRATION_OPEN STORE_PATH EMPLOYEE_DATA_DIR AGENT_RUNTIME CLAUDE_CODE_OWNER CLAUDE_CODE_BIN HERMES_CHECKOUT HERMES_PYTHON HERMES_PROVIDER HERMES_MODEL HERMES_BASE_URL HERMES_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET BROWSERBASE_API_KEY SEARCH_API_KEY TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM COMMUNICATION_ROUTES RETELL_API_KEY RETELL_FROM RETELL_AGENT_ID "
+MANAGED=" PORT HOST PUBLIC_BASE_URL GATEWAY_TOKENS STATE_SECRET GATEWAY_SERVICE_TOKEN REGISTRATION_OPEN STORE_PATH EMPLOYEE_DATA_DIR AGENT_RUNTIME CLAUDE_CODE_OWNER CLAUDE_CODE_BIN HERMES_CHECKOUT HERMES_PYTHON HERMES_PROVIDER HERMES_MODEL HERMES_BASE_URL HERMES_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET BROWSERBASE_API_KEY SEARCH_API_KEY TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM COMMUNICATION_ROUTES RETELL_API_KEY RETELL_FROM RETELL_AGENT_ID CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY CLERK_OWNER_EMAIL CLERK_ALLOWED_EMAILS "
 EXTRA=""
 if [ -f "$ENV_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -241,6 +248,8 @@ umask 077
   put BROWSERBASE_API_KEY "$BB_KEY"; put SEARCH_API_KEY "$SEARCH_KEY"
   put TWILIO_ACCOUNT_SID "$TW_SID"; put TWILIO_AUTH_TOKEN "$TW_TOKEN"; put TWILIO_FROM "$TW_FROM"; put COMMUNICATION_ROUTES "$ROUTES"
   put RETELL_API_KEY "$RT_KEY"; put RETELL_FROM "$RT_FROM"; put RETELL_AGENT_ID "$RT_AGENT"
+  printf '\n# Signing in with Google, through Clerk.\n'
+  put CLERK_PUBLISHABLE_KEY "$CK_PUB"; put CLERK_SECRET_KEY "$CK_SECRET"; put CLERK_OWNER_EMAIL "$CK_OWNER"; put CLERK_ALLOWED_EMAILS "$CK_ALLOWED"
   if [ -n "$EXTRA" ]; then printf '\n# Your other settings, kept as they were.\n%s' "$EXTRA"; fi
 } > "$ENV_FILE"
 )
@@ -263,6 +272,8 @@ if ! install_deps "$ROOT/gateway" --include=optional >"$LOG" 2>&1; then bad "Ins
 info "gateway ready"
 if ! { install_deps "$ROOT/web" && (cd "$ROOT/web" && npm run build); } >"$LOG" 2>&1; then bad "Building the app failed:"; tail -n 20 "$LOG" >&2; exit 1; fi
 info "app built"
+# The preview (the app on sample data, at /preview/) is a convenience: without it, everything else still works.
+if (cd "$ROOT/web" && npm run build:demo) >>"$LOG" 2>&1; then info "preview built"; else info "The preview could not be built; everything else still works."; fi
 if [ "$VOICE" = true ]; then
   # The voice worker needs Python 3.10 to 3.14. A Mac's own python3 is 3.9, so a newer one is looked for by name first.
   PY3=""
@@ -338,6 +349,7 @@ printf '  Browser       %s\n' "$(on "$BB_KEY$(setting BROWSER_USE_API_KEY)")"
 printf '  Web search    %s\n' "$(on "$SEARCH_KEY")"
 printf '  Texts         %s\n' "$(on "$TW_TOKEN")"
 printf '  Calls         %s\n' "$(on "$RT_KEY")"
+printf '  Google login  %s\n' "$(on "$CK_SECRET")"
 if [ -n "$TW_TOKEN$RT_KEY" ]; then
   case "$BASE" in
     https://*) ;;

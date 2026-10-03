@@ -214,6 +214,21 @@ URI on the calendar OAuth client (`GOOGLE_CLIENT_ID`). Sign-in reuses that
 client, so no new project or verification is involved; the unverified-app cap
 of 100 users applies to sign-in as it does to calendar.
 
+## Google sign-in on the phone web app (Clerk)
+
+The phone web app signs in with Google through Clerk instead
+(`src/employee/clerk.ts`). Its **Continue with Google** opens `/auth/clerk`
+(`/auth/google` without a nonce redirects there), a page of its own with a
+policy that lets in only Clerk's script for this instance. After Clerk's
+sign-in it posts the Clerk session token to `POST /api/auth/clerk`; the gateway
+verifies it with Clerk, looks up the account's verified primary email, and
+issues the same session cookie an access code gives. `CLERK_OWNER_EMAIL` signs
+in as the first owner in `GATEWAY_TOKENS`; each address in
+`CLERK_ALLOWED_EMAILS` (or anyone at a listed `@domain`) is an owner of its own;
+anyone else gets 403. The list is checked on every request, so removing an
+address ends its sessions. `GET /api/auth/options` tells the sign-in screen
+whether Google (and the preview) are on offer.
+
 ## Exporting the interaction trace
 
 The voice worker records every call as text-only events (utterances, tool

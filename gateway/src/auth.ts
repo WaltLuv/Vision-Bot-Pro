@@ -178,6 +178,11 @@ function publicAccount(userId: string, a: Account) {
 export function registerAuthRoutes(app: Express): void {
   // Step 1: the app opens this in a browser with a fresh nonce.
   app.get("/auth/google", (req: Request, res: Response) => {
+    // The phone app's web sign-in has no nonce: it signs in through Clerk's Google page (employee/clerk.ts).
+    if (req.query.nonce === undefined) {
+      res.redirect(302, "/auth/clerk");
+      return;
+    }
     const nonce = String(req.query.nonce ?? "");
     if (!NONCE_RE.test(nonce)) {
       res.status(400).send(page("Bad request", "Open this from the VisionClaw app."));

@@ -167,6 +167,8 @@ export function installGateway(workers: Workers) {
     ['POST', /^\/api\/auth\/logout$/, () => {preview.signedIn = false; remember({...saved(), signedOut: true}); workers.signedIn(false);}],
     ['GET', /^\/api\/state$/, () => {signedIn(); return state();}],
     ['GET', /^\/api\/connections$/, () => ({...CONNECTIONS, anthropic: preview.claudeReady})],
+    // The sign-in screen as the app shows it; its Google button says it is not part of the preview (chrome.ts).
+    ['GET', /^\/api\/auth\/options$/, () => ({google: true, preview: false})],
     ['POST', /^\/livekit-token$/, () => {throw new HttpError(503, 'Voice conversation runs only in the installed app.');}],
 
     ['POST', /^\/api\/execute$/, (_m, body) => {

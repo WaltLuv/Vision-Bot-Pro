@@ -22,9 +22,12 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname === '/livekit-token') return;
 
-  // Navigations: network first so a deployed update is picked up, falling back
-  // to the cached shell when the phone is offline.
+  // Navigations to the app: network first so a deployed update is picked up,
+  // falling back to the cached shell when the phone is offline. Other pages --
+  // the Google sign-in page, the preview -- are left alone: caching them as the
+  // shell would open them in place of the app.
   if (request.mode === 'navigate') {
+    if (url.pathname !== '/') return;
     event.respondWith(fetch(request).then(res => {
       const copy = res.clone();
       void caches.open(CACHE).then(c => c.put('/', copy));

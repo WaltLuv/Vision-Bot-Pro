@@ -46,6 +46,9 @@ body {
 button { font: inherit; min-height: 44px; padding: 10px 14px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; }
 button:disabled { opacity: .55; cursor: default; }
 .primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* A link that does what a button does looks like one. */
+a.primary, a.ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 14px; border-radius: 10px; border: 1px solid transparent; text-decoration: none; }
+a.ghost { border-color: var(--line); }
 .ghost { background: var(--panel-2); color: var(--ink); border-color: var(--line); }
 .ghost.danger { color: var(--danger); }
 .small { min-height: 36px; padding: 6px 10px; font-size: .85rem; }

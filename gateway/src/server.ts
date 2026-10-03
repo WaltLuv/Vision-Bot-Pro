@@ -1,7 +1,8 @@
 import helmet from "helmet";
 import {fileURLToPath} from "node:url";
 import {existsSync} from "node:fs";
-import {installEmployee} from "./employee/routes.js";
+import {installEmployee,previewDir} from "./employee/routes.js";
+import {clerkGrantValid} from "./employee/clerk.js";
 import {selectRuntime} from "./employee/provider.js";
 import {appContentSecurityPolicy} from "./csp.js";
 import {installLegacyTasks} from "./employee/legacy.js";
@@ -132,7 +133,7 @@ function userFromRequest(req: express.Request, explicitToken?: string): string |
 
 // ---------- app connections (OAuth -> vault) ----------
 
-const validGrant=(owner:string,hash:string)=>[...config.tokens].some(([t,u])=>u===owner&&tokenHash(t)===hash)||(lookupTokenHash(hash)?.userId===owner&&lookupTokenHash(hash)?.status==='approved');
+const validGrant=(owner:string,hash:string)=>[...config.tokens].some(([t,u])=>u===owner&&tokenHash(t)===hash)||(lookupTokenHash(hash)?.userId===owner&&lookupTokenHash(hash)?.status==='approved')||clerkGrantValid(owner,hash);
 const employee=installEmployee(app,userFromRequest,validGrant);
 installLegacyTasks(app,employee,userFromRequest);
 registerCommunicationWebhooks(app,employee.db,(owner,task,key,conversationId,title)=>{employee.q.create(owner,{task,title,context:{source:'webhook',conversationId}},key);void employee.q.tick();});
@@ -144,6 +145,8 @@ app.use((req,res,next)=>{if(req.path==='/'||req.path.startsWith('/assets/'))res.
 const webDist=process.env.WEB_DIST_DIR?path.resolve(process.env.WEB_DIST_DIR):fileURLToPath(new URL('../../web/dist/',import.meta.url));
 if(!existsSync(path.join(webDist,'index.html')))console.warn(JSON.stringify({event:'web.missing',dir:webDist,hint:'Run `npm ci && npm run build` in web/ so the phone client can be served.'}));
 app.use(express.static(webDist));
+// The preview: the same app on sample data, with nothing to sign in to and nothing leaving the page.
+app.use('/preview',(_req,res,next)=>{res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");next();},express.static(previewDir()));
 registerConnectRoutes(app, userFromRequest);
 registerAuthRoutes(app);
 

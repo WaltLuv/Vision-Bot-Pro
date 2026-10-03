@@ -20,6 +20,19 @@ revoked, `session()` deletes the session on its next use rather than letting it
 outlive the credential. Sign-out deletes the row server-side, so the cookie is
 useless afterwards (verified in the e2e run).
 
+Google sign-in (through Clerk) ends in the same session. The gateway accepts a
+Clerk session token only after Clerk's library verifies its signature, expiry
+and issuer, and only when its `azp` names the page origin the request comes
+from. It then asks Clerk for the account's primary email, which must be
+verified and on the owner's list (`CLERK_OWNER_EMAIL`, `CLERK_ALLOWED_EMAILS`).
+The exchange must carry the sign-in page's own header, which a page on another
+site cannot send without this server's permission, and the server never gives
+it. So no other site can sign a visitor in or out. The list is checked again on
+every request, so removing an email ends its sessions, and turning Google
+sign-in off ends them all (`clerk.test.ts`: forged, expired, wrong-site,
+unverified and unlisted sign-ins are all refused). The sign-in page runs
+Clerk's script under a policy of its own; the app's page never loads it.
+
 Every mutating request from a cookie session must carry a matching
 `x-csrf-token`; without it the gateway answers 403 and does no work (verified in
 the e2e run). Sign-in is rate limited to 10 attempts a minute, the rest of the

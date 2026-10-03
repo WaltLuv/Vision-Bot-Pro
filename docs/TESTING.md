@@ -334,6 +334,31 @@ on every start.
 suppliers' real partner APIs, LiveKit Cloud, and the app on a real phone over
 https.
 
+## Google sign-in (Clerk)
+
+`gateway/tests/clerk.test.ts` signs session tokens the way Clerk does (RS256,
+with Clerk's claims) and has Clerk's own library verify them through the real
+routes, with a stand-in answering Clerk's user lookup. It checks who gets in
+and as whom (the owner's email, a listed client, a listed `@domain`), and that
+the server refuses a stranger, an unverified email, a token issued to another
+site, a forged token, an expired token, and a request without the sign-in
+page's header or origin. It also checks that taking an email off the list ends
+its session, and that with the keys removed nothing is offered and Google
+sessions end.
+
+In a browser: the running gateway, with Clerk's script and API stood in on
+Clerk's own host name (the browser resolves it to a local https stand-in with
+a lab certificate), at a phone viewport. The sign-in screen offers Google and
+the preview. Google sign-in lands in the app as the owner, and signing out and
+in again works. A listed client gets an employee of their own with no tasks.
+A stranger is refused with a clear message and offered a different account,
+and switching works. "Start a preview" opens the preview on sample data. No
+console errors and no blocked loads: all 11 checks pass.
+
+**Not verified here**: Clerk's real servers and script, and Google's own
+account screens. This environment cannot reach them. They need real Clerk keys
+on the owner's computer.
+
 ## The published preview (`web/demo`)
 
 The preview is the real phone app built with an in-page stand-in for the
