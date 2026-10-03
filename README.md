@@ -360,8 +360,6 @@ For DAT SDK issues, see the [developer documentation](https://wearables.develope
 
 ## Citation
 
-If you use VisionClaw in your research, please cite our paper:
-
 ```bibtex
 @article{liu2026visionclaw,
   title={VisionClaw: Always-On AI Agents through Smart Glasses},
@@ -371,6 +369,3 @@ If you use VisionClaw in your research, please cite our paper:
 }
 ```
 
-## License
-
-This source code is licensed under the license found in the [LICENSE](LICENSE) file in the root directory of this source tree.
