@@ -19,7 +19,7 @@ export class RetellVoice implements VoiceProvider{
  }
 }
 export function registerCommunications(t:ToolGateway,db:Store,sms:SMSProvider=new TwilioSMS(),voice:VoiceProvider=new RetellVoice()){
- t.register({id:'contacts_list',description:'Find a contact by name or organization',effect:'read',schema:z.object({query:z.string().max(100).default('')}),run:async(a,c)=>db.list(c.owner,'contact').filter(x=>!x.blocked&&(x.name+' '+x.organization).toLowerCase().includes(a.query.toLowerCase())).slice(0,30)});
+ t.register({id:'contacts_list',description:'Find a contact by name, company or role (such as contractor)',effect:'read',schema:z.object({query:z.string().max(100).default('')}),run:async(a,c)=>db.list(c.owner,'contact').filter(x=>!x.blocked&&(x.name+' '+x.organization+' '+(x.notes??'')).toLowerCase().includes(a.query.toLowerCase())).slice(0,30)});
  const destination=z.object({contactId:z.string(),to:z.string().regex(/^\+[1-9]\d{6,14}$/)});
  for(const channel of ['sms','voice'] as const)t.register({id:channel==='sms'?'sms_send':'phone_call',title:channel==='sms'?'Send this text':'Place this call',description:channel==='sms'?'Send this exact text message':'Call this contact with this objective',effect:'communication',schema:destination.extend(channel==='sms'?{body:z.string().min(1).max(1600)}:{objective:z.string().min(1).max(4000)}),run:async(a,c)=>{
   const contact=db.get(c.owner,'contact',a.contactId);if(!contact||contact.phone!==a.to||contact.blocked)throw new Refused('Contact is unavailable or destination changed');

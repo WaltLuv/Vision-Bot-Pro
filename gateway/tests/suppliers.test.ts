@@ -220,7 +220,7 @@ test('eBay is not a supplier unless it is explicitly switched on',async()=>{
 });
 
 test('the default registry contains no supplier the owner has not connected',()=>{
- const saved=Object.fromEntries(['EBAY_ENABLED','EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','HOME_DEPOT_ENDPOINT','LOWES_ENDPOINT','AMAZON_ENDPOINT','WALMART_ENDPOINT','SUPPLIER_CONFIG_PATH'].map(k=>[k,process.env[k]]));
+ const saved=Object.fromEntries(['EBAY_ENABLED','EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','HOME_DEPOT_ENDPOINT','LOWES_ENDPOINT','AMAZON_ENDPOINT','WALMART_ENDPOINT','SUPPLIER_CONFIG_PATH','GEMINI_API_KEY','GOOGLE_API_KEY','WEB_PRICE_CHECK'].map(k=>[k,process.env[k]]));
  try{
   for(const k of Object.keys(saved))delete process.env[k];
   assert.deepEqual(loadSuppliers().adapters.map(a=>a.id),[],'nothing is instantiated by default');

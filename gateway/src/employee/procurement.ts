@@ -1,5 +1,5 @@
 import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,canonical} from './tools.js';import {providerJson} from './communications.js';
-import {compareOffers,loadSuppliers,offerSchema,scoreMatch,searchSuppliers,type Offer,type SupplierAdapter} from './suppliers.js';
+import {compareOffers,loadSuppliers,offerSchema,scoreMatch,searchSuppliers,type Offer,type SupplierAdapter} from './suppliers.js';import {webPriceChecks} from './webprices.js';
 export {compareOffers,offerSchema,type Offer} from './suppliers.js';
 
 /**
@@ -28,13 +28,14 @@ export class EbayBrowse implements SupplierAdapter{
 }
 
 /**
- * Optional suppliers are constructed only once the owner has switched them on.
+ * Optional suppliers are constructed only once the owner has switched them on:
+ * eBay by EBAY_ENABLED, the stores' prices by web search by a Gemini key.
  * A supplier that is merely available must not appear in the registry at all:
  * listing it in every search as "not connected" inflates the denominator, so
  * "1 of 3 answered" would read as two failures when only one supplier failed.
  */
 export function optionalSuppliers(http:typeof fetch=fetch):SupplierAdapter[]{
- return process.env.EBAY_ENABLED==='true'?[new EbayBrowse(http)]:[];
+ return [...(process.env.EBAY_ENABLED==='true'?[new EbayBrowse(http)]:[]),...webPriceChecks(http)];
 }
 
 /**
@@ -57,7 +58,8 @@ export function registerProcurement(t:ToolGateway,db:Store,adapters?:SupplierAda
   if(!reached)throw Error(`No supplier answered. ${suppliers.map(s=>`${s.name}: ${s.detail??s.status}`).join('; ')}`);
   return {requestId:request.id,currency:a.currency,offers:compareOffers(saved,a.currency),suppliers,
    searched:suppliers.length,succeeded:reached,
-   note:'Prices and availability are as reported at the time shown. Taxes and stock are only confirmed by a supplier quote.'};
+   note:'Prices and availability are as reported at the time shown. Taxes and stock are only confirmed by a supplier quote.'+
+    (saved.some(o=>o.method==='web_search')?' Offers with method web_search are what each store\'s own page showed when Google read it: say so, give their links, and do not quote or buy them here; the owner buys them on the store\'s site.':'')};
  }});
  t.register({id:'suppliers_list',description:'List connected suppliers and how each is reached',effect:'read',schema:z.object({}),run:async()=>registry().map(s=>({id:s.id,name:s.name,method:s.method,connected:s.configured(),requires:s.requires}))});
  // A supplier with no API or partner feed can still be compared: the employee reads the offer on the
@@ -95,7 +97,9 @@ export function registerProcurement(t:ToolGateway,db:Store,adapters?:SupplierAda
 export const quoteSchema=z.object({supplier:z.string().min(1),quoteId:z.string().min(1),items:z.array(z.object({sku:z.string(),name:z.string(),quantity:z.number().int().positive(),unitPrice:z.number().nonnegative()})).min(1),subtotal:z.number().nonnegative(),tax:z.number().nonnegative(),fees:z.number().nonnegative(),delivery:z.number().nonnegative(),total:z.number().nonnegative(),currency:z.string().length(3),fulfillment:z.string(),deliveryAddress:z.string(),expiresAt:z.string().datetime()});
 export interface SupplierCheckout{quote(cartId:string,owner:string):Promise<z.infer<typeof quoteSchema>>;refresh(quoteId:string,owner:string):Promise<z.infer<typeof quoteSchema>>;order(quoteId:string,key:string,owner:string,beforeCommit?:()=>void):Promise<{orderNumber:string;receiptUrl:string;status:string}>}
 export function registerSupplier(t:ToolGateway,db:Store,supplier:SupplierCheckout,connection='supplier',owners?:string[]){const suffix=connection==='supplier'?'':`_${connection}`;
- t.register({id:'purchase_quote'+suffix,owners,description:'Get an exact supplier quote including all costs',effect:'read',schema:z.object({cartId:z.string()}),run:async(a,c)=>{if(!db.get(c.owner,'cart',a.cartId))throw Error('Cart not found');const quote=quoteSchema.parse(await supplier.quote(a.cartId,c.owner));return db.create(c.owner,'quote',{...quote,connection,runId:c.runId});}});
+ t.register({id:'purchase_quote'+suffix,owners,description:'Get an exact supplier quote including all costs',effect:'read',schema:z.object({cartId:z.string()}),run:async(a,c)=>{const cart=db.get(c.owner,'cart',a.cartId);if(!cart)throw Error('Cart not found');
+  // A price read on a website or found by web search has no supplier connection behind it to quote. It is bought on the site.
+  if((cart.items??[]).some((i:any)=>i?.method==='browser'||i?.method==='web_search'))throw new Refused("These were found on the stores' websites, so no supplier can quote them here. Buy them on the store's site.");const quote=quoteSchema.parse(await supplier.quote(a.cartId,c.owner));return db.create(c.owner,'quote',{...quote,connection,runId:c.runId});}});
  t.register({id:'purchase_order'+suffix,owners,title:'Buy this',description:'Place the exact purchase shown for approval',effect:'financial',schema:quoteSchema.extend({id:z.string()}),run:async(a,c)=>{
   const saved=db.get(c.owner,'quote',a.id);if(!saved||saved.connection!==connection)throw new Refused('Quote not found');const approved=quoteSchema.parse(a);if(canonical(approved)!==canonical(quoteSchema.parse(saved)))throw new Refused('Quote differs from the supplier record');
   const current=quoteSchema.parse(await supplier.refresh(a.quoteId,c.owner));if(Date.parse(current.expiresAt)<=Date.now()||canonical(current)!==canonical(approved))throw new Refused('Price, stock or fulfillment changed. Request a new quote and approval.');

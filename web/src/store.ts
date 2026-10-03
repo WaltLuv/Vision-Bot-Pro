@@ -231,4 +231,5 @@ export const ACCESS_METHOD_LABEL: Record<AccessMethod, string> = {
   mcp: 'Connected tool',
   browser: 'Browser',
   manual: 'Manual connection',
+  web_search: 'Web search',
 };

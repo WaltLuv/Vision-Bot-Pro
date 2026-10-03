@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {Store} from '../src/employee/db.js';import {ToolGateway} from '../src/employee/tools.js';
-import {assertPublicUrl,htmlToText,isPrivateAddress,registerWeb} from '../src/employee/web.js';
+import {assertPublicUrl,htmlToText,isPrivateAddress,registerWeb,searchProvider} from '../src/employee/web.js';
 
 const reply=(body:string,init:ResponseInit&{url?:string}={})=>{const r=new Response(body,{headers:{'content-type':'text/html'},...init});if(init.url)Object.defineProperty(r,'url',{value:init.url});return r;};
 function gateway(http:typeof fetch){const db=new Store(':memory:'),t=new ToolGateway(db);registerWeb(t,http);db.put('a','run',{id:'r',status:'working'});return {db,t};}
@@ -76,13 +76,113 @@ test('json is returned as it came, not mangled into prose',async()=>{
  db.close();
 });
 
+/** Runs with exactly these search settings, whatever the environment had. */
+async function withEnv(env:Record<string,string|undefined>,body:()=>Promise<void>){
+ const saved=Object.fromEntries(Object.keys(env).map(k=>[k,process.env[k]]));
+ for(const [k,v] of Object.entries(env))if(v===undefined)delete process.env[k];else process.env[k]=v;
+ try{await body();}finally{for(const [k,v] of Object.entries(saved))if(v===undefined)delete process.env[k];else process.env[k]=v;}
+}
+const NO_SEARCH={SEARCH_API_KEY:undefined,GEMINI_API_KEY:undefined,GOOGLE_API_KEY:undefined,SEARCH_MODEL:undefined};
+
 test('search says it is not connected rather than inventing results',async()=>{
- const saved=process.env.SEARCH_API_KEY;delete process.env.SEARCH_API_KEY;
- try{
+ await withEnv(NO_SEARCH,async()=>{
   const {db,t}=gateway(async()=>{throw Error('must not be called');});
   await assert.rejects(()=>t.invoke('a','r','web_search',{query:'anything'},'k'),/not connected/);
+  assert.equal(searchProvider(),null);
   db.close();
- }finally{if(saved!==undefined)process.env.SEARCH_API_KEY=saved;}
+ });
+});
+
+// Gemini's generateContent with Google Search on, as the API answers it: the answer, what it searched for, the pages
+// (as Google redirect links, titled with their site) and which part of the answer each page backs.
+const GEMINI_KEY='fixture-gemini-key-0123456789abcdef';
+const redirect=(id:string)=>`https://vertexaisearch.cloud.google.com/grounding-api-redirect/${id}`;
+const grounded=(text:string,chunks:{id:string;title:string}[],supports:{text:string;chunks:number[]}[],queries=['moen 1222 cartridge replacement'])=>({
+ candidates:[{content:{role:'model',parts:[{text}]},finishReason:'STOP',groundingMetadata:{webSearchQueries:queries,searchEntryPoint:{renderedContent:'<div class="container">…</div>'},
+  groundingChunks:chunks.map(c=>({web:{uri:redirect(c.id),title:c.title}})),
+  groundingSupports:supports.map(s=>({segment:{startIndex:text.indexOf(s.text),endIndex:text.indexOf(s.text)+s.text.length,text:s.text},groundingChunkIndices:s.chunks}))}}],
+ usageMetadata:{promptTokenCount:40,candidatesTokenCount:60,totalTokenCount:100}});
+/** Gemini plus Google's redirect host. Every request is recorded; anything else is refused. */
+function geminiStandIn(answer:(body:any,n:number)=>{status?:number;body:any},landings:Record<string,string|null>){
+ const calls:{url:string;init:any;body?:any}[]=[];let n=0;
+ const http=(async(input:any,init:any={})=>{const url=String(input);
+  if(url.startsWith('https://generativelanguage.googleapis.com/v1beta/models/')){const body=JSON.parse(init.body);calls.push({url,init,body});const r=answer(body,n++);return new Response(JSON.stringify(r.body),{status:r.status??200,headers:{'content-type':'application/json'}});}
+  if(url.startsWith('https://vertexaisearch.cloud.google.com/')){calls.push({url,init});assert.equal(init.redirect,'manual','a grounding link is followed one hop, never into the page');const to=landings[url.split('/').pop()!];
+   if(to===null)throw Error('redirect host unreachable');return new Response(null,{status:302,headers:{location:to??'https://example.com/'}});}
+  throw Error(`unexpected request to ${url}`);}) as typeof fetch;
+ return {http,calls};
+}
+
+test('without a search API key, a Gemini key searches Google, and each result is the page behind the answer',async()=>{
+ await withEnv({...NO_SEARCH,GEMINI_API_KEY:GEMINI_KEY},async()=>{
+  const text='The Moen 1222 Posi-Temp cartridge fits most single-handle Moen shower valves. The Home Depot lists it at $28.98.';
+  const {http,calls}=geminiStandIn(()=>({body:grounded(text,[{id:'aaa',title:'moen.com'},{id:'bbb',title:'homedepot.com'},{id:'ccc',title:'moen.com'}],
+   [{text:'The Moen 1222 Posi-Temp cartridge fits most single-handle Moen shower valves.',chunks:[0,2]},{text:'The Home Depot lists it at $28.98.',chunks:[1]}])}),
+   {aaa:'https://www.moen.com/products/1222',bbb:'https://www.homedepot.com/p/Moen-Posi-Temp-Cartridge-1222/100153536',ccc:'https://www.moen.com/products/1222'});
+  assert.equal(searchProvider(),'gemini');
+  const {db,t}=gateway(http);
+  const r=await t.invoke('a','r','web_search',{query:'Moen 1222 cartridge'},'k');
+  assert.equal(r.provider,'Google Search, through Gemini');
+  assert.equal(r.answer,text);assert.deepEqual(r.searches,['moen 1222 cartridge replacement']);
+  assert.deepEqual(r.results.map((x:any)=>x.url),['https://www.moen.com/products/1222','https://www.homedepot.com/p/Moen-Posi-Temp-Cartridge-1222/100153536'],'the pages themselves, once each, not Google redirect links');
+  assert.equal(r.results[1].title,'homedepot.com');assert.equal(r.results[1].snippet,'The Home Depot lists it at $28.98.','each page comes with the part of the answer it backs');
+  // The request: the owner's key in a header (never the address), Google Search on, and the model told to stick to the pages.
+  const ask=calls[0]!;assert.match(ask.url,/models\/gemini-3\.5-flash:generateContent$/);assert.equal(ask.init.headers['x-goog-api-key'],GEMINI_KEY);assert.ok(!ask.url.includes(GEMINI_KEY));
+  assert.deepEqual(ask.body.tools,[{google_search:{}}]);assert.match(ask.body.contents[0].parts[0].text,/Moen 1222 cartridge[\s\S]*Do not add anything the pages do not say/);
+  assert.equal(ask.body.generationConfig.thinkingConfig.thinkingLevel,'low');
+  assert.equal(calls.filter(c=>c.url.startsWith('https://vertexaisearch')).length,3,'only Google\'s redirect host is asked, and no page is loaded');
+  db.close();
+ });
+});
+
+test('a Gemini search that fails says why in plain words, and never repeats the key',async()=>{
+ const cases:[number,string,RegExp][]=[
+  [402,'Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.',/out of credits.*Top it up in Google AI Studio.*SEARCH_API_KEY/],
+  [400,`API key not valid. Please pass a valid API key. (${GEMINI_KEY})`,/did not accept its API key/],
+  [429,'Resource has been exhausted (e.g. check quota).',/rate limit or quota/],
+  [404,'models/gemini-3.5-flash is not found for API version v1beta',/no model called gemini-3\.5-flash.*SEARCH_MODEL/],
+  [500,`Internal error encountered for key ${GEMINI_KEY}`,/HTTP 500: Internal error encountered for key \[redacted\]/],
+ ];
+ for(const [status,message,expected] of cases)await withEnv({...NO_SEARCH,GOOGLE_API_KEY:GEMINI_KEY},async()=>{
+  const {http}=geminiStandIn(()=>({status,body:{error:{code:status,message,status:'X'}}}),{});
+  const {db,t}=gateway(http);
+  const error=await t.invoke('a','r','web_search',{query:'anything'},'k').then(()=>null,(e:Error)=>e);
+  assert.ok(error,`HTTP ${status} must fail`);assert.match(error!.message,expected);assert.ok(!error!.message.includes(GEMINI_KEY),'the key is never repeated');
+  db.close();
+ });
+});
+
+test('a model that takes no thinking level is asked again without one; an older model is never sent one',async()=>{
+ await withEnv({...NO_SEARCH,GEMINI_API_KEY:GEMINI_KEY},async()=>{
+  const {http,calls}=geminiStandIn((body,n)=>n===0?{status:400,body:{error:{code:400,message:'Thinking level is not supported for this model.',status:'INVALID_ARGUMENT'}}}:{body:grounded('An answer.',[],[])},{});
+  const {db,t}=gateway(http);
+  assert.equal((await t.invoke('a','r','web_search',{query:'anything'},'k')).answer,'An answer.');
+  assert.equal(calls.length,2);assert.ok(calls[0]!.body.generationConfig);assert.equal(calls[1]!.body.generationConfig,undefined);
+  db.close();
+ });
+ await withEnv({...NO_SEARCH,GEMINI_API_KEY:GEMINI_KEY,SEARCH_MODEL:'gemini-2.5-flash'},async()=>{
+  const {http,calls}=geminiStandIn(()=>({body:grounded('An answer.',[],[])}),{});
+  const {db,t}=gateway(http);
+  await t.invoke('a','r','web_search',{query:'anything'},'k');
+  assert.match(calls[0]!.url,/gemini-2\.5-flash:generateContent$/);assert.equal(calls[0]!.body.generationConfig,undefined);
+  db.close();
+ });
+});
+
+test('a grounding link that cannot be followed is kept as it is, and a search API key still wins over Gemini',async()=>{
+ await withEnv({...NO_SEARCH,GEMINI_API_KEY:GEMINI_KEY},async()=>{
+  const {http}=geminiStandIn(()=>({body:grounded('Fact.',[{id:'gone',title:'lowes.com'}],[{text:'Fact.',chunks:[0]}])}),{gone:null});
+  const {db,t}=gateway(http);
+  const r=await t.invoke('a','r','web_search',{query:'anything'},'k');
+  assert.deepEqual(r.results.map((x:any)=>[x.url,x.title]),[[redirect('gone'),'lowes.com']]);
+  db.close();
+ });
+ await withEnv({...NO_SEARCH,GEMINI_API_KEY:GEMINI_KEY,SEARCH_API_KEY:'fixture-only'},async()=>{
+  assert.equal(searchProvider(),'api');
+  const {db,t}=gateway(async(input:any)=>{assert.match(String(input),/api\.search\.brave\.com/);return new Response(JSON.stringify({web:{results:[{title:'A',url:'https://a.test',description:'one'}]}}),{headers:{'content-type':'application/json'}});});
+  assert.equal((await t.invoke('a','r','web_search',{query:'anything'},'k')).provider,'api.search.brave.com');
+  db.close();
+ });
 });
 
 test('search results normalize across provider shapes',async()=>{

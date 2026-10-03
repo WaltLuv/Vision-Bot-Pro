@@ -201,3 +201,18 @@ test('the follow-up work a text or a finished call starts is named for the owner
   assert.equal(h.queued[1]!.title,'Call with Maria Lopez finished');
  }finally{h.server.close();h.db.close();for(const k of ['TWILIO_AUTH_TOKEN','TWILIO_ACCOUNT_SID','COMMUNICATION_ROUTES','RETELL_API_KEY'])delete process.env[k];}
 });
+
+// "Text my contractor": who someone is to the owner is in the contact's notes, so a lookup by role finds them.
+test('a contact is found by name, company or role, and a blocked one never is',async()=>{
+ const db=new Store(':memory:'),t=new ToolGateway(db);const {sms}=recording();
+ registerCommunications(t,db,sms,silentVoice);db.put('a','run',{id:'r',status:'working'});db.put('b','run',{id:'rb',status:'working'});
+ contact(db,'a',{name:'Mike Alvarez',phone:'+15550142277',organization:'Alvarez Plumbing',notes:'My contractor'});
+ contact(db,'a',{name:'Dana Cole',phone:'+15550142288',organization:'Cole Electric',notes:'Electrician, my contractor for wiring',blocked:true});
+ contact(db,'b',{name:'Other owner\'s contractor',phone:'+15550142299',notes:'contractor'});
+ const names=async(query:string)=>(await t.invoke('a','r','contacts_list',{query},`q-${query}`)).map((c:any)=>c.name);
+ assert.deepEqual(await names('contractor'),['Mike Alvarez'],'by role; the blocked contact and another owner\'s are not offered');
+ assert.deepEqual(await names('alvarez plumbing'),['Mike Alvarez']);
+ assert.deepEqual(await names('mike'),['Mike Alvarez']);
+ assert.deepEqual(await names('dana'),[]);
+ db.close();
+});

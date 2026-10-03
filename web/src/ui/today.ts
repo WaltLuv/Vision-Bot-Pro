@@ -2,7 +2,7 @@ import {api, newIdempotencyKey} from '../api';
 import {h, mount} from '../dom';
 import {cameraMessage} from '../camera';
 import type {Card} from '../realtime';
-import {activeRun, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
+import {activeRun, isTerminal, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
 import {approvalCard} from './approvals';
 import {richText} from '../rich';
 import type {Ctx} from './ctx';
@@ -228,9 +228,15 @@ function browsingCard(ctx: Ctx): HTMLElement | null {
 
 function runPanel(ctx: Ctx, run: ReturnType<typeof activeRun> & {}): HTMLElement {
   const blocked = unreconciledActions(ctx.state.action, run.id);
+  // The employee does one task at a time, so a new one waits for the one before it, which may be waiting for you.
+  const ahead = run.status === 'queued' ? ctx.state.run.find(r => r.id !== run.id && !isTerminal(r) && r.status !== 'queued') : undefined;
+  const waitingOnYou = !!ahead && liveApprovals(ctx.state.approval).some(a => a.runId === ahead.id);
   return h('section', {class: 'card'},
     h('p', {class: 'eyebrow', text: STATUS_LABEL[run.status]}),
     h('h3', {text: runTitle(run)}),
+    ahead ? h('p', {class: 'note', text: waitingOnYou
+      ? 'Starts once you answer the request above. Your employee does one task at a time.'
+      : `Starts when "${runTitle(ahead)}" finishes. Your employee does one task at a time.`}) : null,
     run.error ? h('p', {class: 'note', text: run.error}) : null,
     blocked.length ? h('p', {class: 'note', text: 'An external action needs checking before this can continue. Open it under Tasks.'}) : null,
     h('div', {class: 'row'},

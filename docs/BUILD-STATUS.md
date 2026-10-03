@@ -13,10 +13,10 @@ Exact commands, results and per-criterion labels are in `docs/TESTING.md`.
 
 ## Verified in this checkout
 
-- Gateway typecheck clean; **128 of 129 tests pass, 1 skipped**. The skip is the real-binary Claude Code test, which refuses to run
+- Gateway typecheck clean; **142 of 143 tests pass, 1 skipped**. The skip is the real-binary Claude Code test, which refuses to run
   inside a Claude Code cloud session with a network; offline it ran, and its
   startup contract passed.
-- Web client typechecks and builds; **107/107 tests pass** across 10 files.
+- Web client typechecks and builds; **166/166 tests pass** across 19 files.
 - **119/119 end-to-end checks pass** against a real gateway in a real browser at a
   phone viewport, with a synthetic camera and microphone and two configured
   suppliers, one of which is deliberately down.
@@ -112,6 +112,10 @@ used. Per-criterion detail and how to reproduce each suite is in
 | 10 | Unauthorised access returns 403/404 without leaking | IMPLEMENTED + VERIFIED |
 | 11 | Reconnect does not duplicate messages, calls or purchases | IMPLEMENTED + VERIFIED |
 | 12 | Phone fully usable without glasses | IMPLEMENTED + VERIFIED |
+| 14 | Google sign-in for the phone app (Clerk) | IMPLEMENTED + VERIFIED with Clerk's own library and, in a real browser, a stand-in for Clerk's script and API; real Clerk and Google BLOCKED ON OWNER CREDENTIAL (Clerk keys) |
+| 15 | Web search through Google with a Gemini key | IMPLEMENTED + VERIFIED against a stand-in in Gemini's response shape; the owner's key lists models but has no credit (HTTP 402), so no live grounded answer has been seen — BLOCKED ON OWNER CREDENTIAL (top-up) |
+| 16 | Damaged fixture → identify → compare four stores → text the contractor for approval | IMPLEMENTED + VERIFIED in the lab on a phone-sized browser against the running app, with Gemini, Twilio and the model stood in (the model scripted); live Gemini BLOCKED ON OWNER CREDENTIAL |
+| 17 | Readiness check for a local install (`deploy/doctor.sh --live`) | IMPLEMENTED + VERIFIED against the lab's stand-ins, and against the owner's real Gemini project (it reports the missing credit) |
 
 ### Supplier adapters
 
@@ -129,6 +133,7 @@ tests. None has run against a live account in this repository.
 | Specialty vendors | Owner-configured catalog | IMPLEMENTED + VERIFIED — same connection model; nothing is hardcoded to one vendor |
 | eBay | Official API, optional | IMPLEMENTED + BLOCKED ON OWNER CREDENTIAL — off unless `EBAY_ENABLED=true`; never a default or only supplier |
 | MCP-backed supplier | Connected tool | SCAFFOLDED — a connector may expose catalog tools and an exact-quote checkout, but no supplier has been run this way here |
+| The Home Depot, Lowe's, Amazon, Walmart without a partner connection | Web search (Google through Gemini) | IMPLEMENTED + VERIFIED against fixtures and in the lab — a price is kept only when Google ties it to a product page on the store's own site; labelled Web search, stock unconfirmed, never quoted or bought here; live Gemini BLOCKED ON OWNER CREDENTIAL (top-up) |
 | Any website, read in a browser | Browserbase browser + `offer_record` | IMPLEMENTED + VERIFIED against fixtures — the employee reads a price on a supplier's site and records it; it joins the comparison marked as read from a website and unverified, and checkout refuses it (no supplier connection can quote an exact total), so the owner buys it on the site. Stagehand is not used: the employee drives the browser through the gateway's own governed step tools |
 
 The field mappings for Home Depot and Lowe's are defaults against partner

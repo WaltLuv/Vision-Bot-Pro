@@ -6,8 +6,8 @@ credential this environment does not have, that is stated rather than implied.
 ## What runs without any credential
 
 ```bash
-cd gateway && npm ci && npx tsc --noEmit && npm test     # 129 tests
-cd web     && npm ci && npm run verify                   # build + 107 tests
+cd gateway && npm ci && npx tsc --noEmit && npm test     # 143 tests
+cd web     && npm ci && npm run verify                   # build + 166 tests
 ```
 
 `npm run verify` in `web/` builds first on purpose: the packaging tests read the
@@ -359,6 +359,75 @@ console errors and no blocked loads: all 11 checks pass.
 account screens. This environment cannot reach them. They need real Clerk keys
 on the owner's computer.
 
+## Web search and store prices through Gemini
+
+`gateway/tests/web.test.ts` and `gateway/tests/webprices.test.ts` answer as
+Gemini's API does with Google Search on: the answer, the searches it ran, the
+pages behind it as Google redirect links, and which part of the answer each
+page backs. They check:
+
+- the request: the key in a header, never in the address; Google Search on;
+  a lower thinking level for Gemini 3 and later, asked again without one if a
+  model refuses it;
+- results: each result is the page itself, after one hop through Google's
+  redirect host, and no page is loaded;
+- failures: out of credit (402), a refused key, a quota (429) and an unknown
+  model each say what to do in plain words, and never repeat the key;
+- a search API key still takes precedence;
+- store prices: a price is kept only when a part of the answer stating it is
+  backed by a product page on that store's own site. A Lowe's page cannot back
+  a Home Depot price, and a search-results page backs nothing;
+- the four stores are searched at once, and each one's outcome is reported;
+- a store with a partner connection is priced through it instead;
+- an offer found this way can never be quoted or bought.
+
+Live: the owner's Gemini key lists models (free), but a generated answer
+returns HTTP 402: the project has no credit. No live grounded answer has been
+seen here.
+
+## The damaged-fixture scenario (lab, 2026-10-03)
+
+The flagship request was run on the running app (real gateway, real Hermes, the
+real phone app in a phone-sized Chromium): the camera pointed at a drawn,
+damaged Moen shower valve, and the phone sent *"Find a suitable replacement,
+compare prices, and prepare a message to my contractor."* The model was the
+lab's scripted one, because Gemini has no credit. It cannot look at the photo,
+so it takes the scene's fixture as identified, and Hermes's own image step said
+so. Gemini's search and Twilio were stand-ins.
+
+What happened, all on the phone:
+
+1. The task started with the photo.
+2. All four stores were searched at once. Walmart's only result was a
+   search-results page, so it was dropped.
+3. The contractor was found by the role on the contact, "My contractor".
+4. **Send this text** appeared on Today with the exact words and number, while
+   the camera kept running.
+5. A second task, sent meanwhile, said it would start once the request above
+   was answered.
+6. On **Allow once**, the stand-in received exactly that text, the task
+   finished with the recommendation and links, and the waiting task ran at
+   once.
+
+Found and fixed along the way:
+
+- With no total known, the comparison was not sorted by price.
+- The website note said "Lowe's's".
+- A web-found price said "a supplier quote confirms it", though none can.
+- The card listed five "not quoted" or "not reported" lines.
+- Contacts had no way to say who someone is to you, and lookup ignored that.
+- A task waiting behind an approval did not say why.
+
+## Readiness check (`deploy/doctor.sh`)
+
+It reads `gateway/.env` when there is no server `.env`. Checked against the
+lab, it passed every check: the app, Hermes, the Gemini key and a live answer,
+LiveKit and the voice worker, Google search, the four stores, the owner's
+suppliers, Twilio's account and number, Retell's agent, Clerk's secret key, and
+the owner's contacts and memory. Against the owner's real Gemini project it
+reported the missing credit (HTTP 402). The lab run was made under bash 5 and,
+live, under macOS's bash 3.2; the real-Gemini run under bash 3.2.
+
 ## The published preview (`web/demo`)
 
 The preview is the real phone app built with an in-page stand-in for the
@@ -487,10 +556,11 @@ and Enter while busy keeps the text instead of discarding it
 | Suite | Command | Result |
 |---|---|---|
 | Gateway typecheck | `npx tsc --noEmit` | clean |
-| Gateway tests | `npm test` | 128 passed, 0 failed, 1 skipped (129 tests); the skip is the real Claude Code test, for the reason above |
-| Web typecheck + build | `npm run build` | clean; entry 38.8 kB, 13.0 kB gzipped |
-| Web tests | `npm test` | 107 passed (10 files) |
+| Gateway tests | `npm test` | 142 passed, 0 failed, 1 skipped (143 tests); the skip is the real Claude Code test, for the reason above |
+| Web typecheck + build | `npm run build` | clean; entry 47.9 kB, 16.1 kB gzipped |
+| Web tests | `npm test` | 166 passed (19 files) |
 | End-to-end | `npm run e2e` | 119 passed |
+| Preview | `npm run build:demo && npm run check:demo` | 31 passed |
 
 `npm run lint` in `gateway/` (prettier --check) fails on 38 files (the two
 Browserbase files are the newest). It already

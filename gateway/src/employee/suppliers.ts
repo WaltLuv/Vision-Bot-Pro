@@ -7,7 +7,8 @@
 //
 // Access methods are tried in the order the handoff requires -- official API,
 // official partner/catalog API, MCP connector, approved browser adapter, then a
-// configured URL or manual connector. A supplier's method is part of its
+// configured URL or manual connector, and last a price found on the store's own
+// page by web search (webprices.ts). A supplier's method is part of its
 // configuration, and it travels with every offer so a person can see how a
 // price was obtained.
 //
@@ -18,7 +19,7 @@ import {z} from 'zod';
 import {readFileSync} from 'node:fs';
 import {providerJson} from './communications.js';
 
-export const ACCESS_METHODS = ['official_api', 'partner_api', 'mcp', 'browser', 'manual'] as const;
+export const ACCESS_METHODS = ['official_api', 'partner_api', 'mcp', 'browser', 'manual', 'web_search'] as const;
 export type AccessMethod = (typeof ACCESS_METHODS)[number];
 /** Lower is preferred. A supplier reachable two ways is used by its best one. */
 export const methodRank = (m: AccessMethod) => ACCESS_METHODS.indexOf(m);
@@ -77,6 +78,8 @@ export interface SupplierAdapter {
   readonly requires: readonly string[];
   configured(): boolean;
   search(query: string, quantity: number, currency: string): Promise<Offer[]>;
+  /** How long this supplier may take to answer, when not the usual SUPPLIER_TIMEOUT_MS. */
+  readonly timeoutMs?: number;
 }
 
 // --- normalisation --------------------------------------------------------
@@ -394,7 +397,7 @@ export async function searchSuppliers(adapters: SupplierAdapter[], query: string
     try {
       const offers = await Promise.race([
         adapter.search(query, quantity, currency),
-        new Promise<never>((_, reject) => {timer = setTimeout(() => reject(Object.assign(Error('timeout'), {timeout: true})), searchTimeoutMs());}),
+        new Promise<never>((_, reject) => {timer = setTimeout(() => reject(Object.assign(Error('timeout'), {timeout: true})), adapter.timeoutMs ?? searchTimeoutMs());}),
       ]);
       return {offers, report: {...base, status: 'ok', offers: offers.length, checkedAt: new Date().toISOString()}};
     } catch (error) {

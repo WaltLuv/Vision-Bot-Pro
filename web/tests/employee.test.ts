@@ -39,11 +39,13 @@ describe('employee: people it can contact', () => {
     type('Contact name', 'Maria Lopez');
     type('Contact phone number', '(555) 014-2233');
     type('Contact company', 'Unit 4B');
+    type('Who they are to you', 'My contractor');
     button('Add person').click();
     await vi.waitFor(() => expect(addContact).toHaveBeenCalledTimes(1));
-    expect(addContact.mock.calls[0]?.[0]).toEqual({name: 'Maria Lopez', phone: '+15550142233', organization: 'Unit 4B'});
+    expect(addContact.mock.calls[0]?.[0]).toEqual({name: 'Maria Lopez', phone: '+15550142233', organization: 'Unit 4B', notes: 'My contractor'});
     await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(field('Contact name').value).toBe('');
+    expect(field('Who they are to you').value).toBe('');
   });
 
   it('says what is wrong instead of saving a number it cannot use', async () => {
@@ -58,10 +60,10 @@ describe('employee: people it can contact', () => {
   });
 
   it('shows the number a text or call will go to', () => {
-    const {ctx} = makeCtx([{id: 'c1', name: 'Maria Lopez', phone: '+15550142233', organization: 'Unit 4B'}]);
+    const {ctx} = makeCtx([{id: 'c1', name: 'Maria Lopez', phone: '+15550142233', organization: 'Unit 4B', notes: 'My contractor'}]);
     mount(document.getElementById('app')!, employee(ctx));
     expect(document.body.textContent).toContain('Maria Lopez');
-    expect(document.body.textContent).toContain('+15550142233 · Unit 4B');
+    expect(document.body.textContent).toContain('+15550142233 · Unit 4B · My contractor');
   });
 });
 

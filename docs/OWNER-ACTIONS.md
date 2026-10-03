@@ -78,12 +78,24 @@ cannot work.
   address.
 - **Phone calls**: Retell `RETELL_API_KEY`, `RETELL_FROM`, `RETELL_AGENT_ID`,
   with its webhook pointed at `${PUBLIC_BASE_URL}/webhooks/voice`.
-- **Web search**: `SEARCH_API_KEY` (Brave Search by default; `SEARCH_ENDPOINT`
-  for another provider). Without it the employee can still read any web
-  address it is given.
+- **Web search**: a Gemini key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) is
+  enough: the employee searches Google through Gemini and gets the pages behind
+  each answer. Or `SEARCH_API_KEY` (Brave Search by default; `SEARCH_ENDPOINT`
+  for another provider), which is used instead when set. Without either the
+  employee can still read any web address it is given. The Gemini project needs
+  credit: `bash deploy/doctor.sh --live` says when it has run out.
 - **Suppliers**: each is independent, and a search asks every connected one at
   once. Connect as few or as many as you want; the phone always says which were
   searched and which were not.
+
+  With a Gemini key and nothing else, The Home Depot, Lowe's, Amazon and
+  Walmart are still compared: Gemini searches Google for the item at each
+  store, and a price is kept only when Google ties it to a product page on that
+  store's own site. Such a price is labelled **Web search**, with the page's
+  link, unconfirmed stock, and no shipping or tax. It cannot be quoted or bought
+  in the app; the owner buys it on the store's site. A store's partner
+  connection, when set, replaces its web search. `WEB_PRICE_CHECK=off` turns
+  web search pricing off.
 
   | Supplier | Variables |
   |---|---|

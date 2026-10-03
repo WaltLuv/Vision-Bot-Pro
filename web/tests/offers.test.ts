@@ -109,6 +109,34 @@ describe('the rendered comparison', () => {
     expect(suppliers).toEqual(['The Home Depot', 'Walmart']);
   });
 
+  it('puts the lowest price first when no total is known, and a known total before an unknown one', () => {
+    const unknown = {shipping: null, tax: null, fees: null, matchQuality: 'candidate' as const, method: 'web_search' as const};
+    const node = materialSection(material(), [
+      offer({id: 'a', supplier: 'Lowe\'s B', unitPrice: 31.47, ...unknown}),
+      offer({id: 'b', supplier: 'Amazon', unitPrice: 24.97, ...unknown}),
+      offer({id: 'c', supplier: 'Lowe\'s', unitPrice: 27.48, ...unknown}),
+      offer({id: 'd', supplier: 'Riverside', unitPrice: 30, matchQuality: 'candidate'}),
+    ]);
+    expect([...node.querySelectorAll('.offer .supplier')].map(n => n.textContent)).toEqual(['Riverside', 'Amazon', "Lowe's", "Lowe's B"]);
+  });
+
+  it('says where to confirm and buy a price found on a store\'s website', () => {
+    const text = materialSection(material(), [offer({method: 'web_search', supplier: "Lowe's", quantity: 1, shipping: null, tax: null, fees: null, pickup: {available: null, eta: '', location: ''}, delivery: {available: null, eta: '', location: ''}})]).textContent ?? '';
+    expect(text).toContain("Found by web search on the store's own page. Confirm the price there, and buy it there: its checkout shows shipping and tax.");
+    expect(text).not.toContain('A supplier quote confirms it');
+    expect(text).not.toContain("Lowe's's");
+    // Just the price the page showed: no column of things the page did not say, and never a made-up total.
+    expect(text).not.toMatch(/not quoted|not reported|Total not known/);
+    expect(text).toContain('1 × $8.47');
+  });
+
+  it('still shows what a store\'s page did say about shipping and pickup', () => {
+    const text = materialSection(material(), [offer({method: 'browser', shipping: 0, tax: null, fees: null, pickup: {available: true, eta: 'Today', location: 'Main St.'}})]).textContent ?? '';
+    expect(text).toContain('Shipping');
+    expect(text).toContain('Pickup · Main St. · Today');
+    expect(text).not.toMatch(/Delivery: not reported/);
+  });
+
   // Supplier-supplied text is untrusted like any other external content.
   it('renders supplier text as text, never as markup', () => {
     const node = materialSection(material(), [offer({product: '<img src=x onerror=alert(1)>Bolt'})]);

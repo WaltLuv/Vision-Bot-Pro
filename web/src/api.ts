@@ -24,7 +24,7 @@ export interface Action extends Row {runId: string; name: string; status: string
 /** A browser the employee is using. liveEmbed is the provider's live view, present only while it runs and only from an allowed host. */
 export interface Computer extends Row {runId: string; task: string; status: 'queued' | 'starting' | 'working' | 'completed' | 'failed' | 'cancelled' | 'closed' | 'cleanup_pending'; control?: 'agent' | 'owner'; liveEmbed?: string | null; liveHost?: string}
 
-export type AccessMethod = 'official_api' | 'partner_api' | 'mcp' | 'browser' | 'manual';
+export type AccessMethod = 'official_api' | 'partner_api' | 'mcp' | 'browser' | 'manual' | 'web_search';
 export type SupplierStatus = 'ok' | 'failed' | 'unconfigured' | 'timeout';
 
 /** How one supplier answered a search, so a short list is never mistaken for a complete one. */

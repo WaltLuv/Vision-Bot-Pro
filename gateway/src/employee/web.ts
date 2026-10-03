@@ -2,7 +2,8 @@
 // not already know, and to follow a link you give it.
 //
 // Two tools, deliberately: read a page, and search for one. Search needs a
-// provider key; reading does not, so the useful half works with no setup.
+// provider key (a search API's, or a Gemini key, which searches Google);
+// reading does not, so the useful half works with no setup.
 //
 // The model choosing these URLs is influenced by whatever it has just read, so
 // this is an outbound request an attacker can aim. It may only reach public
@@ -13,6 +14,7 @@ import {z} from 'zod';
 import {lookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
 import {ToolGateway} from './tools.js';
+import {geminiKey,groundedSearch} from './grounded.js';
 
 const MAX_BYTES = 2_000_000;
 const MAX_TEXT = 100_000;
@@ -86,14 +88,23 @@ async function readPage(raw: string, http: typeof fetch): Promise<{url: string; 
   return {url: response.url || url.toString(), title, text: raw_text.slice(0, MAX_TEXT), truncated: raw_text.length > MAX_TEXT};
 }
 
+type SearchResult = {results: {title: string; url: string; snippet: string}[]; provider: string; answer?: string; searches?: string[]};
+
+/** How the employee searches: a search API when its key is set, else Google through a Gemini key, else not at all. */
+export function searchProvider(env: NodeJS.ProcessEnv = process.env): 'api' | 'gemini' | null {
+  return env.SEARCH_API_KEY ? 'api' : geminiKey(env) ? 'gemini' : null;
+}
+
 /**
  * Search, when a provider is configured. Deliberately provider-neutral: the
  * endpoint and key are configuration, so nobody is locked to one search
  * company, and with none set the tool says so instead of inventing results.
  */
-async function search(query: string, http: typeof fetch): Promise<{results: {title: string; url: string; snippet: string}[]; provider: string}> {
-  const key = process.env.SEARCH_API_KEY, endpoint = process.env.SEARCH_ENDPOINT ?? 'https://api.search.brave.com/res/v1/web/search';
-  if (!key) throw Error('Web search is not connected. Set SEARCH_API_KEY, or give the employee a web address to read.');
+async function search(query: string, http: typeof fetch): Promise<SearchResult> {
+  const provider = searchProvider();
+  if (provider === 'gemini') return googleSearch(query, http);
+  if (!provider) throw Error('Web search is not connected. Set SEARCH_API_KEY, or a Gemini key to search through Google, or give the employee a web address to read.');
+  const key = process.env.SEARCH_API_KEY!, endpoint = process.env.SEARCH_ENDPOINT ?? 'https://api.search.brave.com/res/v1/web/search';
   const url = `${endpoint}${endpoint.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}`;
   const response = await http(url, {signal: AbortSignal.timeout(TIMEOUT_MS), headers: {Accept: 'application/json', 'X-Subscription-Token': key, Authorization: `Bearer ${key}`}});
   if (!response.ok) throw Error(`Search returned HTTP ${response.status}`);
@@ -108,6 +119,25 @@ async function search(query: string, http: typeof fetch): Promise<{results: {tit
       snippet: String(r.description ?? r.snippet ?? r.content ?? '').slice(0, 500),
     })).filter(r => r.url),
   };
+}
+
+/**
+ * Google Search through Gemini. Gemini's summary comes back with the pages it
+ * found, each with the parts of the summary it backs, so the employee can tell
+ * a sourced fact from an unsourced one and open any page to read it whole.
+ */
+async function googleSearch(query: string, http: typeof fetch): Promise<SearchResult> {
+  const found = await groundedSearch(`Search Google for: ${query}
+
+Report what the pages you find say, briefly and specifically: names, model or part numbers, prices and where each was seen, dates. Do not add anything the pages do not say.`, http);
+  const seen = new Set<string>();
+  const results = found.sources.flatMap((source, i) => {
+    if (!source.url || seen.has(source.url)) return [];
+    seen.add(source.url);
+    const snippet = found.supports.filter(s => s.sources.includes(i)).map(s => s.text.trim()).filter(Boolean).join(' … ');
+    return [{title: (source.title || source.domain).slice(0, 200), url: source.url, snippet: snippet.slice(0, 500)}];
+  });
+  return {provider: 'Google Search, through Gemini', answer: found.text.slice(0, 4000), searches: found.queries, results: results.slice(0, 8)};
 }
 
 export function registerWeb(t: ToolGateway, http: typeof fetch = fetch) {

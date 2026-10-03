@@ -79,14 +79,22 @@ optional extras again.
 |---|---|
 | talk and see (voice and camera) | a Gemini API key and a LiveKit server; it then builds and starts the voice worker beside the app (this needs Python 3.10 or newer, which a Mac does not come with) |
 | use a browser you can watch and take over | a Browserbase API key |
-| search the web | a Brave Search API key |
+| search the web | nothing more with a Gemini key (it searches Google through Gemini); or a Brave Search API key |
+| compare store prices | nothing more with a Gemini key: The Home Depot, Lowe's, Amazon and Walmart prices from the stores' own pages, through Google |
 | send texts | a Twilio account SID, auth token and number |
 | place calls | a Retell API key, number and agent ID |
 | let people sign in with Google | a Clerk publishable key and secret key, your Google email, and any other Google accounts to let in |
 
-One Gemini key serves both voice and, if you pick `gemini`, Hermes. Suppliers
-and connected tools are set in `gateway/.env`; see
-[docs/OWNER-ACTIONS.md](docs/OWNER-ACTIONS.md).
+One Gemini key serves voice, web search, store prices and, if you pick
+`gemini`, Hermes. A store price found that way is what the store's own product
+page showed when Google read it: the app labels it **Web search**, links the
+page, and leaves the purchase to the store's site. Supplier connections, which
+give exact quotes and checkout, and connected tools are set in `gateway/.env`;
+see [docs/OWNER-ACTIONS.md](docs/OWNER-ACTIONS.md).
+
+Before showing it to anyone, run `bash deploy/doctor.sh --live`: it tries each
+connected service (Gemini's credit included) and says in plain words what to
+fix. [docs/CLIENT-DEMO.md](docs/CLIENT-DEMO.md) is a script for the demo.
 
 **Signing in with Google.** Create a free application at
 [dashboard.clerk.com](https://dashboard.clerk.com) with Google turned on, copy
@@ -136,6 +144,7 @@ not.
 | [docs/TESTING.md](docs/TESTING.md) | How to run the tests, and what is actually verified |
 | [docs/BUILD-STATUS.md](docs/BUILD-STATUS.md) | Every capability, honestly labelled |
 | [docs/OWNER-ACTIONS.md](docs/OWNER-ACTIONS.md) | Accounts and keys only you can provide |
+| [docs/CLIENT-DEMO.md](docs/CLIENT-DEMO.md) | Showing it to a client: the checks, the script, and what each part needs |
 
 Built from [Intent-Lab/VisionClaw](https://github.com/Intent-Lab/VisionClaw), on
 the [Gemini Live API](https://ai.google.dev/gemini-api/docs/live) and, for the

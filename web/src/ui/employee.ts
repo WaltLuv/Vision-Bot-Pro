@@ -85,13 +85,15 @@ function contactsSection(ctx: Ctx): HTMLElement {
   const name = h('input', {class: 'field', placeholder: 'Name', 'aria-label': 'Contact name', autocomplete: 'off'});
   const phone = h('input', {class: 'field', type: 'tel', placeholder: 'Mobile number', 'aria-label': 'Contact phone number', autocomplete: 'off'});
   const organization = h('input', {class: 'field', placeholder: 'Company (optional)', 'aria-label': 'Contact company', autocomplete: 'off'});
+  // So "text my contractor" finds the right person without the employee guessing.
+  const role = h('input', {class: 'field', placeholder: 'Who they are to you (optional), like my contractor', 'aria-label': 'Who they are to you', autocomplete: 'off'});
   const add = async () => {
     const number = phoneNumber(phone.value);
     if (!name.value.trim()) {ctx.toast('Add their name.'); return;}
     if (!number) {ctx.toast('Use their full mobile number. Outside the US and Canada, start with + and the country code.'); return;}
     try {
-      await api.addContact({name: name.value.trim(), phone: number, organization: organization.value.trim()});
-      name.value = phone.value = organization.value = '';
+      await api.addContact({name: name.value.trim(), phone: number, organization: organization.value.trim(), notes: role.value.trim()});
+      name.value = phone.value = organization.value = role.value = '';
       forgetEdits();
       await ctx.refresh();
       ctx.toast('Added.');
@@ -105,11 +107,11 @@ function contactsSection(ctx: Ctx): HTMLElement {
       ? h('div', {}, ...ctx.state.contact.map(c => h('div', {class: 'row-item'},
           h('p', {class: 'task', text: String(c.name ?? 'Contact')}),
           // The number shown is the one a text or call goes to, so it can be checked here.
-          h('p', {class: 'note', text: [c.phone, c.organization].filter(Boolean).map(String).join(' · ')}),
+          h('p', {class: 'note', text: [c.phone, c.organization, c.notes].filter(Boolean).map(String).join(' · ')}),
           h('button', {class: 'ghost small', onclick: async () => {await api.removeContact(c.id); await ctx.refresh();}}, 'Remove'))))
       : h('p', {class: 'note', text: 'No one yet. A message or call is only ever sent to someone here, after you approve it.'}),
     h('label', {class: 'label', text: 'Add someone'}),
-    name, phone, organization,
+    name, phone, organization, role,
     h('div', {class: 'row'}, h('button', {class: 'primary', onclick: () => void add()}, 'Add person')),
   );
 }

@@ -100,3 +100,31 @@ describe('today: what you type survives updates', () => {
     expect(box().value).toBe('Price M6 bolts');
   });
 });
+
+// One task at a time: a task sent while another waits for the owner's approval says what it is waiting for.
+describe('today: a task that waits for the one before it', () => {
+  beforeEach(() => {document.body.innerHTML = '<div id="app"></div>';});
+  const run = (id: string, status: string, task: string, createdAt: string) => ({id, status, task, createdAt, updatedAt: createdAt, context: {}});
+
+  it('says it starts once the owner answers the request above', () => {
+    const ctx = makeCtx();
+    ctx.state.run = [run('r1', 'working', 'Find a replacement and text my contractor', '2026-10-03T05:00:00.000Z'), run('r2', 'queued', 'Remember that unit 4B has a Moen valve', '2026-10-03T05:01:00.000Z')] as never;
+    ctx.state.approval = [{id: 'a1', runId: 'r1', tool: 'sms_send', label: 'Send this text', effect: 'communication', details: {}, status: 'pending', expiresAt: Date.now() + 60_000}] as never;
+    render(ctx);
+    expect(root().textContent).toContain('Starts once you answer the request above. Your employee does one task at a time.');
+  });
+
+  it('names the task it waits for when that one is still working', () => {
+    const ctx = makeCtx();
+    ctx.state.run = [run('r1', 'working', 'Compare prices for M6 bolts', '2026-10-03T05:00:00.000Z'), run('r2', 'queued', 'Remember the gate code', '2026-10-03T05:01:00.000Z')] as never;
+    render(ctx);
+    expect(root().textContent).toMatch(/Starts when ".*Compare prices for M6 bolts.*" finishes/);
+  });
+
+  it('says nothing of the kind when nothing is ahead of it', () => {
+    const ctx = makeCtx();
+    ctx.state.run = [run('r2', 'queued', 'Remember the gate code', '2026-10-03T05:01:00.000Z')] as never;
+    render(ctx);
+    expect(root().textContent).not.toMatch(/Starts (once|when)/);
+  });
+});

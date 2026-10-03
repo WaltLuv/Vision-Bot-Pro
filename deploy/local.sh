@@ -171,7 +171,11 @@ LK_URL="$(offer LIVEKIT_URL 'LiveKit URL, for the live voice and camera (wss://.
 LK_KEY=""; LK_SECRET=""
 if [ -n "$LK_URL" ]; then LK_KEY="$(offer LIVEKIT_API_KEY 'LiveKit API key')"; LK_SECRET="$(offer LIVEKIT_API_SECRET 'LiveKit API secret' secret)"; fi
 BB_KEY="$(offer BROWSERBASE_API_KEY 'Browserbase API key, for a browser you can watch and take over' secret)"
-SEARCH_KEY="$(offer SEARCH_API_KEY 'Brave Search API key, so it can search the web' secret)"
+if [ -n "$GOOGLE_KEY$GEMINI_KEY" ]; then
+  SEARCH_KEY="$(offer SEARCH_API_KEY 'Brave Search API key (blank: it searches Google with your Gemini key)' secret)"
+else
+  SEARCH_KEY="$(offer SEARCH_API_KEY 'Brave Search API key, so it can search the web' secret)"
+fi
 TW_SID="$(offer TWILIO_ACCOUNT_SID 'Twilio account SID, for text messages')"
 TW_TOKEN=""; TW_FROM=""
 if [ -n "$TW_SID" ]; then TW_TOKEN="$(offer TWILIO_AUTH_TOKEN 'Twilio auth token' secret)"; TW_FROM="$(offer TWILIO_FROM 'Twilio number to send from (+1...)')"; fi
@@ -346,7 +350,7 @@ printf '  Access code   %s\n' "$CODE"
 printf '  Work          %s\n' "$WORK"
 printf '  Talk and see  %s\n' "$TALK"
 printf '  Browser       %s\n' "$(on "$BB_KEY$(setting BROWSER_USE_API_KEY)")"
-printf '  Web search    %s\n' "$(on "$SEARCH_KEY")"
+if [ -z "$SEARCH_KEY" ] && [ -n "$GOOGLE_KEY$GEMINI_KEY" ]; then printf '  Web search    on, through Google with your Gemini key\n'; else printf '  Web search    %s\n' "$(on "$SEARCH_KEY")"; fi
 printf '  Texts         %s\n' "$(on "$TW_TOKEN")"
 printf '  Calls         %s\n' "$(on "$RT_KEY")"
 printf '  Google login  %s\n' "$(on "$CK_SECRET")"

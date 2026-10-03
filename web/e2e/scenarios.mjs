@@ -5,7 +5,8 @@ import {openPhone, signIn, state, csrf, tab, waitFor} from './harness.mjs';
 const PREVIEW = 'video.preview';
 
 export async function appLoads({page, check, cspViolations, pageErrors}) {
-  check('PWA loads and renders under the gateway CSP', await page.locator('text=Sign in with the access code').count() > 0);
+  // The sign-in screen's wording is the owner's to change; its access-code field is what proves the app rendered.
+  check('PWA loads and renders under the gateway CSP', await page.getByLabel('Access code', {exact: true}).count() > 0);
   check('no CSP violations while loading', cspViolations.length === 0, cspViolations[0] ?? '');
   check('no uncaught page errors while loading', pageErrors.length === 0, pageErrors[0] ?? '');
 }
