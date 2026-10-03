@@ -84,7 +84,9 @@ export async function verifiedEmail(token: string, origin: string, s: ClerkSetti
 //
 // A page of its own, so Clerk's script never runs on the app's page: the app
 // keeps its strict policy, and this one allows exactly Clerk and the bot check
-// Clerk uses.
+// Clerk uses. Since Clerk's version 6 script, its sign-in screens come as a
+// script of their own (@clerk/ui), which the page loads first and hands to
+// Clerk when it starts; without it Clerk refuses to show a sign-in.
 
 export const clerkPagePolicy = (s: ClerkSettings) =>
   `default-src 'self'; script-src 'self' https://${s.frontendApi} https://challenges.cloudflare.com; connect-src 'self' https://${s.frontendApi}; ` +
@@ -101,6 +103,7 @@ a{color:var(--accent)}[hidden]{display:none!important}`;
 export function clerkSignInPage(s: ClerkSettings): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sign in · VisionBot Pro</title><link rel="icon" href="/icon-192.png"><style>${PAGE_STYLE}</style>
+<script defer crossorigin="anonymous" src="https://${s.frontendApi}/npm/@clerk/ui@1/dist/ui.browser.js"></script>
 <script defer crossorigin="anonymous" data-clerk-publishable-key="${s.publishableKey}" src="https://${s.frontendApi}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
 <script defer src="/auth/clerk/sign-in.js"></script></head>
 <body><main><h1>VisionBot Pro</h1><p id="status" role="status">Loading Google sign-in…</p><div id="sign-in"></div>
@@ -134,8 +137,9 @@ export const clerkSignInScript = `(() => {
   }
   other.addEventListener('click', async () => {other.hidden = true; await window.Clerk.signOut(); location.reload();});
   (async () => {
-    if (!window.Clerk) {say('Google sign-in could not load. Check your connection, or use your access code.'); return;}
-    try {await window.Clerk.load();} catch {say('Google sign-in could not load. Use your access code instead.'); return;}
+    if (!window.Clerk || !window.__internal_ClerkUICtor) {say('Google sign-in could not load. Check your connection, or use your access code.'); return;}
+    // Its screens, from their own script; and no usage reports, which go to a host this page does not allow.
+    try {await window.Clerk.load({ui: {ClerkUI: window.__internal_ClerkUICtor}, telemetry: false});} catch {say('Google sign-in could not load. Use your access code instead.'); return;}
     if (window.Clerk.user) {finish(); return;}
     say('');
     window.Clerk.mountSignIn(box, {fallbackRedirectUrl: '/auth/clerk', signUpFallbackRedirectUrl: '/auth/clerk'});

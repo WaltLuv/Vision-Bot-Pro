@@ -36,7 +36,10 @@ test('Google sign-in through Clerk: who gets in, as whom, and only from this app
   const page=await fetch(base+'/auth/clerk');assert.equal(page.status,200);const policy=page.headers.get('content-security-policy')!,html=await page.text();
   assert.match(policy,new RegExp(`script-src 'self' https://${FAPI} https://challenges.cloudflare.com;`));assert.match(policy,new RegExp(`connect-src 'self' https://${FAPI};`));assert.doesNotMatch(policy,/unsafe-inline'[^;]*;\s*connect|script-src[^;]*unsafe-inline/);
   assert.match(html,new RegExp(`data-clerk-publishable-key="${PK}" src="https://${FAPI}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"`));assert.doesNotMatch(html,/<script>[^<]/,'no inline script');
-  assert.match(await (await fetch(base+'/auth/clerk/sign-in.js')).text(),/\/api\/auth\/clerk/);
+  // Clerk 6 shows a sign-in only with its screens script, loaded first from the same Clerk host and handed to Clerk as it starts.
+  const ui=html.indexOf(`src="https://${FAPI}/npm/@clerk/ui@1/dist/ui.browser.js"`);assert.ok(ui>0&&ui<html.indexOf('clerk.browser.js'),'the screens script comes before Clerk itself');
+  const script=await (await fetch(base+'/auth/clerk/sign-in.js')).text();assert.match(script,/\/api\/auth\/clerk/);
+  assert.match(script,/Clerk\.load\(\{ui: \{ClerkUI: window\.__internal_ClerkUICtor\}, telemetry: false\}\)/,'started with its screens, and without usage reports to a host the page refuses');
   const google=await fetch(base+'/auth/google',{redirect:'manual'});assert.equal(google.status,302);assert.equal(google.headers.get('location'),'/auth/clerk','the app\'s Google button lands on the sign-in page');
 
   // The owner's own Google account signs in to the owner's employee, with an ordinary session.

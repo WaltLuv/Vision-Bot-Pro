@@ -353,7 +353,16 @@ the preview. Google sign-in lands in the app as the owner, and signing out and
 in again works. A listed client gets an employee of their own with no tasks.
 A stranger is refused with a clear message and offered a different account,
 and switching works. "Start a preview" opens the preview on sample data. No
-console errors and no blocked loads: all 11 checks pass.
+console errors and no blocked loads: all 13 checks pass.
+
+The stand-in behaves as Clerk's current script does (`@clerk/clerk-js` 6.37.0
+and `@clerk/ui` 1.38.1, read from npm): it shows no sign-in unless Clerk was
+started with its screens script, which comes separately. The first version of
+the sign-in page did not load that script, so a real Clerk would have shown a
+blank page; the page now loads it first and hands it to Clerk. Clerk's script
+was also found to send usage reports from development instances to
+`clerk-telemetry.com`, a host the page's policy refuses, so the page turns
+them off.
 
 **Not verified here**: Clerk's real servers and script, and Google's own
 account screens. This environment cannot reach them. They need real Clerk keys
