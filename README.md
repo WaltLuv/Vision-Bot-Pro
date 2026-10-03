@@ -1,10 +1,5 @@
 # Vision-Bot-Pro
 
-*Formerly VisionClaw. Server service names and internal package names keep
-the old name, so existing installs are unaffected.*
-
-![Vision-Bot-Pro](assets/teaserimage.png)
-
 **An AI employee in your phone — powered by Gemini Live + Claude Sonnet 5.**
 Point your camera at something and talk. It
 sees what you show it, hears you and answers out loud -- and it takes work off
@@ -285,18 +280,6 @@ empty: the app asks for your access code on first launch.
 Enable Developer Mode in the Meta AI app (same steps as iOS above), then:
 1. Tap **"Start Streaming"** in the app
 2. Tap the **AI button** for voice + vision conversation
-
----
-
-## OpenClaw is not required
-
-Upstream VisionClaw sent tasks from the phone to a self-hosted OpenClaw. That path
-is gone: tasks now go from the `agent/` worker to the gateway, and neither the
-phone web app nor the Android app has an OpenClaw setting. The iOS app still
-carries upstream's "self-hosted" backend setting, which points it at another
-server instead of the gateway; it is not part of the supported product. Some iOS
-file and setting names still say `OpenClaw` (for example `OpenClawBridge`, now
-only a gateway error parser); they are kept so saved settings survive updates.
 
 ---
 
