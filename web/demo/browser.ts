@@ -9,7 +9,7 @@
 // when the page can be touched.
 import type {Computer} from '../src/api';
 import {h, mount} from '../src/dom';
-import {emit, newId, preview} from './gateway';
+import {emit, newId, preview, step} from './gateway';
 
 interface Product {name: string; price: number; stock: string; pickup: string}
 type Page = 'home' | 'results' | 'product' | 'cart';
@@ -67,6 +67,7 @@ async function work(sim: Sim, signal: AbortSignal, deadline: number): Promise<Pr
   for (;;) {
     await pause(0);
     if (sim.page === 'home') {
+      step(sim.runId, `Searching shop.example for "${sim.query}"`);
       point('#vbp-q'); await pause(1000);
       while (sim.page === 'home' && sim.typed !== sim.query) {
         // Typed key by key; if the owner changed the box meanwhile, it starts over.
@@ -78,9 +79,11 @@ async function work(sim: Sim, signal: AbortSignal, deadline: number): Promise<Pr
       point('#vbp-go'); await pause(700);
       if (sim.page === 'home') search(sim, sim.typed);
     } else if (sim.page === 'results') {
+      step(sim.runId, `Looking over ${sim.results.length} results`);
       for (let i = 0; i < sim.results.length && sim.page === 'results'; i++) {point(`[data-result="${i}"]`); await pause(1100);}
       if (sim.page === 'results') open(sim, 0);
     } else if (sim.page === 'product' && sim.product) {
+      step(sim.runId, `Reading the page for ${sim.product.name}`);
       point('#vbp-price'); await pause(1600);
       if (sim.page === 'product' && sim.product) return sim.product;
     } else {
@@ -101,6 +104,7 @@ export async function browse(runId: string, task: string, query: string, typical
   emit('computer.updated', {runId});
   const deadline = Date.now() + budgetMs;
   const end = (status: Computer['status']) => {computer.status = status; computer.control = 'agent'; sims.delete(id); emit('computer.updated', {runId}); sync();};
+  step(runId, 'Opening the sample shop site');
   try {
     await wait(sim, 1500, signal, deadline);
     computer.status = 'working';

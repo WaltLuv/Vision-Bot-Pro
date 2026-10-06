@@ -38,9 +38,9 @@ const offer = (o: Partial<State['offer'][number]> & Pick<State['offer'][number],
 export function seed(): State {
   const state = freshAccount();
   state.contact = [
-    {id: 'contact-maria', name: 'Maria Lopez', phone: '+14155550143', organization: 'Unit 4B'},
-    {id: 'contact-joe', name: 'Joe Park', phone: '+14155550178', organization: 'Park Plumbing'},
-    {id: 'contact-dana', name: 'Dana Reyes', phone: '+14155550112', organization: 'Riverside Building Supply'},
+    {id: 'contact-maria', name: 'Maria Lopez', phone: '+14155550143', organization: 'Unit 4B', notes: 'Tenant'},
+    {id: 'contact-joe', name: 'Joe Park', phone: '+14155550178', organization: 'Park Plumbing', notes: 'My contractor, for plumbing and fixtures'},
+    {id: 'contact-dana', name: 'Dana Reyes', phone: '+14155550112', organization: 'Riverside Building Supply', notes: 'Supplier rep'},
   ];
   state.memory = [
     {id: 'memory-1', kind: 'work', text: 'Oakridge job: all exterior fixings must be A4 316 stainless, not A2.'},
@@ -86,9 +86,12 @@ export function seed(): State {
   return state;
 }
 
-/** What the preview reports it can do. Texts, calls, the browser and suppliers are the preview's simulated ones. */
+/**
+ * What the preview reports it can do. Texts, calls, the browser and suppliers are the preview's simulated ones; the
+ * engine and connected apps are filled in by the gateway stand-in from what this view really has.
+ */
 export const CONNECTIONS: Connections = {
-  runtime: 'anthropic',
+  runtime: 'anthropic', router: 'rules', liveBrowser: true, searchProvider: null,
   realtime: false, hermes: false, anthropic: false, sms: true, voice: true, products: true, browser: true, search: false,
   suppliers: SUPPLIERS.map(({id, name, method, requires, connected}) => ({id, name, method, requires, connected})),
   mcp: [{id: 'riverside', tools: ['stock_check']}],

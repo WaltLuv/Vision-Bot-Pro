@@ -450,11 +450,35 @@ waits on an approval the owner decides in the app, as on the gateway.
 Inside a claude.ai viewer, Claude does the tasks through the page's `sample`
 capability, on the viewer's own account and after the viewer allows it. It gets
 what a runtime gets from the gateway (the employee, its skills, memory,
-contacts, recent results and the latest comparison) plus tools that raise the
-app's own approvals: send a text, place a call, compare prices, buy against an
-exact quote, use the browser, ask the owner, remember. Anywhere else, or when
-the viewer declines, a scripted employee runs the same tools for a fixed set of
-tasks and says so.
+contacts with who each one is to the owner, recent results, the latest
+comparison and the owner's local time) plus tools that raise the app's own
+approvals: send a text, place a call, compare prices, buy against an exact
+quote, use the browser, ask the owner, remember. "My contractor" finds the
+contact whose note says so. Anywhere else, or when the viewer declines, a
+scripted employee runs the same tools for a fixed set of tasks and says so.
+
+Real, through the viewer's own claude.ai capabilities:
+
+- **Saved between visits** (`db` + `user`): the account is kept in the viewer's
+  private `data/users/<id>/preview` document, which nobody else, the artifact's
+  owner included, can read. Written after a pause in changes, trimmed to stay
+  under the 256 KiB document limit; photos are not kept. A task running when
+  the page closes comes back as stopped, with its approvals withdrawn. Reset
+  deletes the saved copy; Delete everything saves an empty, signed-out account.
+- **Gmail and Google Calendar** (`mcp`): Settings, Connected apps asks
+  claude.ai's own permission question per connector. Reading mail and the
+  calendar needs no approval; saving a draft, sending an email and adding an
+  event wait for the owner's approval of the exact arguments, never "always
+  allowed", with the same cards as the app's Composio actions. A write whose
+  answer never came back is reported as not confirmed, never retried.
+  Disconnecting in the app stops the employee using it.
+- **Damage inspection**: the frame goes to Claude with the gateway's own
+  instructions and comes back in the gateway's shape (findings, boxes over the
+  camera, needs-a-professional rule). Each picture is checked once; frames of
+  the same picture reuse the answer rather than spending usage on a timer.
+- **Routines** use the gateway's schedule rules and run while the page is open.
+  A delivery to Gmail is saved as a draft for approval; other apps say they are
+  not connected.
 
 Simulated, and labelled on the page: texts and calls reach nobody, supplier
 prices come from sample catalogs, orders buy nothing, and the browser is a
@@ -464,20 +488,29 @@ The camera is a drawn scene or a photo the viewer picks ("Use my photo"),
 because a published page cannot open a camera. Voice conversation is not in
 the preview: it needs LiveKit and Gemini Live on a server.
 
-Checked with `npm run build:demo && npm run check:demo`: 31 checks in a
+Checked with `npm run build:demo && npm run check:demo`: 47 checks in a
 phone-sized Chromium, the page wrapped as the artifact host wraps it, under a
-content policy that refuses every network request. Three passes: no Claude; a
-stand-in for the viewer's `sample` that calls the page's tools the way Claude
-does (tool list, size limits, no caching with tools, approvals, answers, tool
-errors, a photo passed as an image); and a viewer who declines Claude.
+content policy that refuses every network request. Three passes: no Claude
+(including "my contractor", a routine saved, run, paused and deleted, and
+inspection saying it needs Claude); stand-ins for the viewer's `sample` (calling
+the page's tools the way Claude does: tool list, size limits, no caching with
+tools, approvals, answers, tool errors, a photo passed as an image, inspection
+asked once per picture), `db` and `user` (reloads keep the account, an
+interrupted task, Delete everything, Reset) and `mcp` with `permissions` (connect,
+read without approval, an email and an event sent exactly as approved, a
+declined email not sent, a disconnected app not called); and a viewer who
+declines Claude.
 
 Found and fixed in the app along the way: after switching to a screen without
 the camera and back, the preview stayed paused on its old frame, so "Send
 photo" and "Ask about this" sent a stale picture (`camera-screen.test.ts`).
 
-**Not verified here**: a real `sample` call inside a claude.ai viewer (its
-consent prompt, tool rounds and image limits), and the viewer's own frame
-policies beyond what the page contract states.
+**Not verified here**: a real `sample`, `db` or `mcp` call inside a claude.ai
+viewer (consent prompts, tool rounds, image limits, the real Gmail and Calendar
+connectors' answers), and the viewer's own frame policies beyond what the page
+contract states. The connector calls use the argument names from the
+connectors' published input schemas; the page reads nothing from their answers
+that it needs, beyond optional ids and links.
 
 ## Installer and doctor
 
@@ -567,9 +600,9 @@ and Enter while busy keeps the text instead of discarding it
 | Gateway typecheck | `npx tsc --noEmit` | clean |
 | Gateway tests | `npm test` | 142 passed, 0 failed, 1 skipped (143 tests); the skip is the real Claude Code test, for the reason above |
 | Web typecheck + build | `npm run build` | clean; entry 47.9 kB, 16.1 kB gzipped |
-| Web tests | `npm test` | 166 passed (19 files) |
+| Web tests | `npm test` | 189 passed (23 files) |
 | End-to-end | `npm run e2e` | 119 passed |
-| Preview | `npm run build:demo && npm run check:demo` | 31 passed |
+| Preview | `npm run build:demo && npm run check:demo` | 47 passed |
 
 `npm run lint` in `gateway/` (prettier --check) fails on 38 files (the two
 Browserbase files are the newest). It already

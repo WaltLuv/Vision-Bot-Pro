@@ -3,13 +3,15 @@
 // content policy that refuses any network request. Three passes:
 //
 //   scripted   no Claude in the page (a local build, or a viewer without it)
-//   claude     a stand-in for the viewer's `sample` capability that calls the
-//              page's tools the way Claude does, to check that plumbing
+//   claude     stand-ins for the viewer's capabilities: `sample`, calling the
+//              page's tools the way Claude does; `db` and `user`, keeping the
+//              account across reloads; `mcp` and `permissions`, a Gmail and a
+//              Google Calendar that record every call
 //   declined   the viewer refuses to let the page use Claude
 //
 //     npm run build:demo && npm run check:demo
 //
-// A real `sample` call only exists inside a claude.ai viewer and is not made here.
+// Real `sample`, `db` and `mcp` calls only exist inside a claude.ai viewer and are not made here.
 import {createServer} from 'node:http';
 import {mkdirSync, readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -57,10 +59,56 @@ const claudeStandIn = mode => `(() => {
     if (/browse/i.test(task)) {const r = await call('use_browser', {task: 'Find a cartridge', search: 'moen 1222 cartridge', typical_unit_price_usd: 40}); return {text: 'STUB browser: ' + r.status + ' ' + (r.found?.name ?? ''), truncated: false};}
     if (/ask me/i.test(task)) return {text: 'STUB answer: ' + (await call('ask_owner', {question: 'Which unit is it?'})).answer, truncated: false};
     if (/nobody/i.test(task)) {try {await call('send_text', {contact: 'Zed', message: 'x'});} catch (e) {return {text: 'STUB error: ' + e.message, truncated: false};}}
+    const tryCall = async (name, args) => {try {return await call(name, args);} catch (e) {return {status: 'error: ' + e.message};}};
+    if (/my contractor/i.test(task)) {const r = await tryCall('send_text', {contact: 'my contractor', message: 'Hi Joe, the part is in.'}); return {text: 'STUB contractor: ' + r.status + ' ' + (r.name ?? ''), truncated: false};}
+    if (/inbox/i.test(task)) {const r = await tryCall('search_email', {query: 'in:inbox'}); return {text: 'STUB inbox: ' + (r.threads ? r.threads.threads.length + ' threads' : r.status), truncated: false};}
+    if (/^Email /i.test(task)) {const r = await tryCall('send_email', {to: ['joe@example.com'], subject: 'Order RS-123', body: 'Hi Joe, the bolts are ordered.'}); return {text: 'STUB email: ' + r.status, truncated: false};}
+    if (/calendar/i.test(task)) {const r = await tryCall('add_calendar_event', {title: 'Plumber visit', start: '2026-10-08T10:00:00-07:00', end: '2026-10-08T11:00:00-07:00', location: 'Unit 4B', guests: ['joe@example.com']}); return {text: 'STUB event: ' + r.status, truncated: false};}
     return {text: 'STUB answer to: ' + task + (options.images ? ' with ' + options.images.length + ' image' : ''), truncated: false};
   };
   sample.limits = async () => ({maxPromptBytes: 262144, images: {maxCount: 5, maxInputBytes: 20000000, mediaTypes: ['image/jpeg', 'image/png']}, tools: {maxCount: 16}});
-  window.claude = {use: async name => (name === 'sample' ? sample : null)};
+  // Damage inspection: one possible crack, boxed, as Claude would describe the frame.
+  window.__json = [];
+  sample.json = async (input, options = {}) => {
+    window.__json.push({images: options.images ? options.images.length : 0, modelTier: options.modelTier, input});
+    return {findings: [{type: 'crack', severity: 'high', confidence: 0.82, description: 'Possible crack across the left bracket', location: 'left bracket', box: [480, 230, 640, 330], recommendation: 'Have a fitter check it'}],
+      summary: 'One possible crack.', needsProfessional: false};
+  };
+  if (${JSON.stringify(mode)} === 'declined') {window.claude = {use: async name => (name === 'sample' ? sample : null)}; return;}
+
+  // The viewer's private corner of the artifact's database, kept in this browser so a reload finds it.
+  const kept = JSON.parse(localStorage.getItem('standin-db') || '{}');
+  const keep = () => localStorage.setItem('standin-db', JSON.stringify(kept));
+  window.__db = kept;
+  const db = {collection: path => ({doc: id => {
+    const key = path + '/' + id;
+    return {
+      get: async () => ({exists: key in kept, data: () => (key in kept ? JSON.parse(JSON.stringify(kept[key])) : undefined)}),
+      set: async data => {const text = JSON.stringify(data); if (text.length > 262144) throw {code: 'invalid_argument', message: 'too big'}; kept[key] = JSON.parse(text); keep();},
+      delete: async () => {delete kept[key]; keep();},
+    };
+  }})};
+  const user = {id: async () => 'viewer-1'};
+
+  // The viewer's Gmail and Google Calendar connectors, and claude.ai's question about each.
+  const grants = JSON.parse(localStorage.getItem('standin-grants') || '{}');
+  const permissions = {
+    state: async name => grants[name] ?? 'prompt',
+    request: async names => {for (const n of names) grants[n] = 'granted'; localStorage.setItem('standin-grants', JSON.stringify(grants)); return Object.fromEntries(names.map(n => [n, grants[n]]));},
+  };
+  window.__mcp = [];
+  const mcp = {
+    listTools: async () => ({servers: [{server: 'Gmail', authStatus: 'connected', tools: [{name: 'search_threads'}]}, {server: 'Google Calendar', authStatus: 'connected', tools: [{name: 'list_events'}]}]}),
+    callTool: async (server, tool, input) => {
+      window.__mcp.push({server, tool, input});
+      if (tool === 'search_threads') return {payload: {threads: [{id: 't1', subject: 'Invoice 4471'}, {id: 't2', subject: 'Thursday visit'}]}};
+      if (tool === 'send_message') return {payload: {id: 'm1', threadId: 't9', labelIds: ['SENT']}};
+      if (tool === 'create_event') return {payload: {id: 'e1'}};
+      return {payload: {}};
+    },
+  };
+  const caps = {sample, db, user, permissions, mcp};
+  window.claude = {use: async name => caps[name] ?? null};
 })();`;
 
 const results = [];
@@ -199,7 +247,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     expect(await card.getByRole('button', {name: 'Always allow this'}).count(), 'browser use should offer standing permission');
     await card.getByRole('button', {name: 'Allow once'}).click();
     await p.getByRole('button', {name: 'Watch it browse'}).click({timeout: 10000});
-    await until(p, 'Your employee is browsing. Tap Take over');
+    await until(p, /Your employee is browsing: (Opening|Searching)/);
     await p.locator('.vbp-site').getByText('Sample Hardware').waitFor({timeout: 2000});
     await p.waitForFunction(() => (document.querySelector('#vbp-q')?.value ?? '').length > 3, null, {timeout: 10000});
     await snap(p, 'browsing');
@@ -226,7 +274,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     await card.waitFor({timeout: 10000});
     await card.getByRole('button', {name: 'Always allow this'}).click();
     await p.getByRole('button', {name: 'Watch it browse'}).click({timeout: 10000});
-    await until(p, 'Your employee is browsing');
+    await until(p, 'Your employee is browsing:');
     await p.locator('.live').getByRole('button', {name: 'Stop'}).click();
     await until(p, 'Stopped.');
     await p.getByRole('button', {name: '← Back'}).click();
@@ -310,10 +358,53 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     expect(/stopped · just now\s+Text Maria that the gate is open/i.test(await text(p)), 'task not shown as stopped');
   });
 
+  await check(p, '"my contractor" is Joe Park: prices first, then a text about them, waiting for approval', async () => {
+    await send(p, 'Price a Moen 1222 cartridge and text my contractor');
+    const card = approval(p, 'Send this text');
+    await card.waitFor({timeout: 15000});
+    const terms = await rows(card);
+    expect(terms.includes('To | Joe Park · +14155550178') && /Message \| Hi Joe, I found a replacement moen 1222 cartridge: .+ Can you fit it this week\?/.test(terms), terms);
+    await card.getByRole('button', {name: 'Allow once'}).click();
+    await until(p, 'Texted Joe Park after you approved it');
+  });
+
+  await check(p, 'a routine: saved with its schedule, run now, its last run shown, paused and deleted', async () => {
+    await tab(p, 'Routines');
+    await p.getByLabel('Routine name').fill('Bolt prices');
+    await p.getByLabel('What it should do').fill('Compare prices for 40 M6 stainless bolts');
+    await p.getByLabel('How often').selectOption('weekly');
+    await p.getByLabel('Which day').selectOption('friday');
+    await p.getByLabel('Time').fill('07:00');
+    await p.getByRole('button', {name: 'Save routine'}).click();
+    await until(p, 'Saved. Every Friday at 7:00 AM');
+    const card = p.locator('section.routine').filter({hasText: 'Bolt prices'});
+    await card.waitFor();
+    expect(/Every Friday at 7:00 AM · next Fri/.test(await card.innerText()), await card.innerText());
+    await card.getByRole('button', {name: 'Run now'}).click();
+    await until(p, 'Started "Bolt prices"');
+    await until(p, /Last run: Done · \d of \d suppliers answered/, 20000);
+    await card.getByRole('button', {name: 'Pause'}).click();
+    await card.getByRole('button', {name: 'Resume'}).waitFor();
+    expect(/paused/i.test(await card.innerText()), 'not shown as paused');
+    await card.getByRole('button', {name: 'Delete'}).click();
+    await p.getByRole('alertdialog').getByRole('button', {name: 'OK'}).click();
+    await p.waitForTimeout(500);
+    expect(!(await card.count()), 'routine not deleted');
+  });
+
+  await check(p, 'without Claude, damage inspection says it needs Claude and stops', async () => {
+    await tab(p, 'Today');
+    if (await p.getByRole('button', {name: 'Start camera'}).count()) await p.getByRole('button', {name: 'Start camera'}).click();
+    await p.getByRole('button', {name: /Inspect for damage/}).click();
+    await until(p, 'Damage inspection needs Claude');
+    await p.getByRole('button', {name: /Inspect for damage/}).waitFor();
+  });
+
   await check(p, 'Settings says what is ready, and which supplier is not connected', async () => {
     await tab(p, 'Settings');
     const body = await until(p, 'Suppliers');
-    for (const part of ['Carrying out tasks\n\nNot set up', 'Text messages\n\nReady', 'Phone calls\n\nReady', 'Using a browser\n\nReady', 'Voice and camera conversation\n\nNot set up', 'Searching the web\n\nNot set up', '6 of 7 connected', 'Needs NORTHSIDE_TOKEN', 'Connected tools: riverside'])
+    for (const part of ['Carrying out tasks\n\nNot set up', 'Text messages\n\nReady', 'Phone calls\n\nReady', 'Using a browser\n\nReady', 'Voice and camera conversation\n\nNot set up', 'Searching the web\n\nNot set up', '6 of 7 connected', 'Needs NORTHSIDE_TOKEN', 'Connected tools: riverside',
+      'Live browser\n\nReady', 'Fast routing\n\nRules', 'Saved sign-ins are not set up on this server', 'Gmail, Slack, Calendar, Notion and other apps are not set up on this server yet.'])
       expect(body.includes(part), `missing "${part}"`);
     await snap(p, 'settings');
   });
@@ -381,7 +472,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     await send(p, 'What should I check before replacing a shower cartridge?');
     await until(p, 'STUB answer to: What should I check before replacing a shower cartridge?');
     const [call] = await calls();
-    expect(call.tools.map(t => t.name).join() === 'send_text,place_call,compare_prices,buy,use_browser,ask_owner,remember', call.tools.map(t => t.name).join());
+    expect(call.tools.map(t => t.name).join() === 'send_text,place_call,compare_prices,buy,use_browser,ask_owner,remember,search_email,read_email,draft_email,send_email,calendar_events,add_calendar_event', call.tools.map(t => t.name).join());
     expect(call.tools.every(t => t.description <= 1024 && t.schema <= 4096), 'a tool is over the size limits');
     expect(!call.hasCache && call.modelTier === 'default', 'cache passed with tools, or wrong tier');
     for (const part of ['Maria Lopez, +14155550143', 'A4 316 stainless', 'offer_id offer-RS-118', 'Task: What should I check'])
@@ -438,6 +529,155 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     await until(p, 'Photo sent.');
     await tab(p, 'Today');
     await until(p, 'with 1 image');
+  });
+
+  await check(p, 'the brief says who each contact is, the owner\'s time, and which apps are real', async () => {
+    const [first] = await calls();
+    for (const part of ['Joe Park, +14155550178, Park Plumbing (My contractor, for plumbing and fixtures)', 'It is now ', 'The owner\'s real Gmail and Google Calendar'])
+      expect(first.input.includes(part), `brief lacks "${part}"`);
+  });
+
+  await check(p, 'Claude texts "my contractor": Joe Park, after approval', async () => {
+    await send(p, 'Tell my contractor the part is in');
+    const card = approval(p, 'Send this text');
+    await card.waitFor({timeout: 10000});
+    expect((await rows(card)).includes('To | Joe Park · +14155550178'), await rows(card));
+    await card.getByRole('button', {name: 'Allow once'}).click();
+    await until(p, 'STUB contractor: sent Joe Park');
+  });
+
+  await check(p, 'Connected apps: Gmail and Google Calendar connect through claude.ai\'s own question', async () => {
+    await tab(p, 'Settings');
+    const gmail = p.locator('.app-row[data-app="gmail"]');
+    await gmail.waitFor({timeout: 10000});
+    expect((await gmail.innerText()).includes('Not connected'), await gmail.innerText());
+    await gmail.getByRole('button', {name: 'Connect'}).click();
+    await until(p, 'Gmail is connected.');
+    await p.locator('.app-row[data-app="gmail"]').filter({hasText: 'Connected'}).getByRole('button', {name: 'Disconnect'}).waitFor();
+    await p.locator('.app-row[data-app="googlecalendar"]').getByRole('button', {name: 'Connect'}).click();
+    await until(p, 'Google Calendar is connected.');
+    await snap(p, 'connected-apps');
+  });
+
+  await check(p, 'reading Gmail needs no approval and reaches the connector', async () => {
+    await send(p, 'What is in my inbox?');
+    await until(p, 'STUB inbox: 2 threads');
+    const made = await p.evaluate(() => window.__mcp);
+    expect(made.some(c => c.server === 'Gmail' && c.tool === 'search_threads' && c.input.query === 'in:inbox'), JSON.stringify(made));
+  });
+
+  await check(p, 'an email waits for approval of its exact words, then goes out through Gmail exactly as approved', async () => {
+    await send(p, 'Email Joe the order details');
+    const card = approval(p, 'Send this email');
+    await card.waitFor({timeout: 10000});
+    const terms = await rows(card);
+    for (const part of ['App | Gmail', 'Action | Send email', 'To | joe@example.com', 'Subject | Order RS-123', 'Body | Hi Joe, the bolts are ordered.'])
+      expect(terms.includes(part), `card lacks "${part}": ${terms}`);
+    expect(!(await card.getByRole('button', {name: 'Always allow this'}).count()), 'email offered standing permission');
+    expect(!(await p.evaluate(() => window.__mcp.some(c => c.tool === 'send_message'))), 'sent before approval');
+    await snap(p, 'email-approval');
+    await card.getByRole('button', {name: 'Allow once'}).click();
+    await until(p, 'STUB email: sent');
+    const sent = await p.evaluate(() => window.__mcp.find(c => c.tool === 'send_message'));
+    expect(JSON.stringify(sent.input) === JSON.stringify({to: ['joe@example.com'], subject: 'Order RS-123', body: 'Hi Joe, the bolts are ordered.'}), JSON.stringify(sent.input));
+  });
+
+  await check(p, 'a declined email is not sent', async () => {
+    await send(p, 'Email Joe again');
+    const card = approval(p, 'Send this email');
+    await card.waitFor({timeout: 10000});
+    await card.getByRole('button', {name: 'Not now'}).click();
+    await until(p, 'STUB email: declined by the owner');
+    expect((await p.evaluate(() => window.__mcp.filter(c => c.tool === 'send_message').length)) === 1, 'a declined email was sent');
+  });
+
+  await check(p, 'a calendar event with a guest says it invites them, and is added only after approval, at the time asked', async () => {
+    await send(p, 'Put the plumber visit on my calendar');
+    const card = approval(p, 'Add this event and invite people');
+    await card.waitFor({timeout: 10000});
+    const terms = await rows(card);
+    for (const part of ['App | Google Calendar', 'Action | Create event', 'Title | Plumber visit', 'Location | Unit 4B', 'Invite | joe@example.com (each gets an email invitation)'])
+      expect(terms.includes(part), `card lacks "${part}": ${terms}`);
+    expect(!(await p.evaluate(() => window.__mcp.some(c => c.tool === 'create_event'))), 'added before approval');
+    await card.getByRole('button', {name: 'Allow once'}).click();
+    await until(p, 'STUB event: added');
+    const made = await p.evaluate(() => window.__mcp.find(c => c.tool === 'create_event'));
+    expect(made.input.summary === 'Plumber visit' && made.input.attendees[0].email === 'joe@example.com' && made.input.notificationLevel === 'ALL' && !!made.input.timeZone, JSON.stringify(made.input));
+    const starts = await p.evaluate(t => new Date(t).getTime(), made.input.startTime);
+    expect(starts === Date.parse('2026-10-08T10:00:00-07:00'), `starts at ${made.input.startTime}`);
+  });
+
+  await check(p, 'a disconnected app is not used, and the app offers to connect it again', async () => {
+    await tab(p, 'Settings');
+    await p.locator('.app-row[data-app="gmail"]').getByRole('button', {name: 'Disconnect'}).click();
+    await p.getByRole('alertdialog').getByRole('button', {name: 'OK'}).click();
+    await until(p, 'Gmail is disconnected.');
+    const before = await p.evaluate(() => window.__mcp.length);
+    await send(p, 'What is in my inbox now?');
+    await until(p, 'STUB inbox: error: The owner disconnected Gmail');
+    await until(p, 'Your employee needs Gmail for a task.');
+    expect((await p.evaluate(() => window.__mcp.length)) === before, 'the connector was called');
+    await p.getByRole('button', {name: 'Connect Gmail'}).click();
+    await until(p, 'Gmail is connected.');
+  });
+
+  await check(p, 'damage inspection: Claude checks the picture once, and the finding is boxed over the camera', async () => {
+    await tab(p, 'Today');
+    if (await p.getByRole('button', {name: 'Start camera'}).count()) await p.getByRole('button', {name: 'Start camera'}).click();
+    await p.waitForFunction(() => (document.querySelector('video.preview')?.videoWidth ?? 0) > 0, null, {timeout: 10000});
+    await p.getByRole('button', {name: /Inspect for damage/}).click();
+    await until(p, /1 possible finding/i, 15000);
+    await until(p, 'Possible crack across the left bracket');
+    expect(await p.locator('.inspect-box').count() === 1, 'no box over the camera');
+    await snap(p, 'inspection');
+    await p.waitForTimeout(5000);
+    const asked = await p.evaluate(() => window.__json);
+    expect(asked.length === 1 && asked[0].images === 1 && asked[0].modelTier === 'default', `asked Claude ${asked.length} times`);
+    await p.getByRole('button', {name: /Stop inspecting/}).click();
+  });
+
+  await check(p, 'the account is kept privately for the viewer: a reload brings back what changed', async () => {
+    await until(p, 'saved for you');
+    await tab(p, 'Employee');
+    await p.getByLabel('Name', {exact: true}).fill('Rosa');
+    await p.getByRole('button', {name: 'Save'}).first().click();
+    await until(p, 'Saved.');
+    await p.waitForTimeout(2800);
+    expect(await p.evaluate(() => Object.keys(window.__db).join()) === 'data/users/viewer-1/preview', await p.evaluate(() => Object.keys(window.__db).join()));
+    await p.reload();
+    await tab(p, 'Employee');
+    await p.waitForFunction(() => document.querySelector('input[aria-label="Name"]')?.value === 'Rosa', null, {timeout: 10000});
+    await until(p, 'Gmail and Calendar are real once you connect them');
+  });
+
+  await check(p, 'a task waiting when the page reloads shows as stopped, and its question is withdrawn', async () => {
+    await send(p, 'Text Maria I am running late');
+    await approval(p, 'Send this text').waitFor({timeout: 10000});
+    await p.waitForTimeout(2800);
+    await p.reload();
+    await tab(p, 'Tasks');
+    await until(p, 'This page was closed or reloaded while the task was running');
+    expect(!(await approval(p, 'Send this text').count()), 'the question is still offered');
+  });
+
+  await check(p, 'Delete everything is kept too: after a reload the account is still signed out and empty', async () => {
+    await tab(p, 'Settings');
+    await p.getByRole('button', {name: 'Delete everything'}).click();
+    await p.getByRole('alertdialog').getByRole('button', {name: 'OK'}).click();
+    await p.getByLabel('Access code').waitFor();
+    await p.reload();
+    await p.getByLabel('Access code').waitFor();
+    await p.getByLabel('Access code').fill('hello');
+    await p.getByRole('button', {name: 'Sign in'}).click();
+    await tab(p, 'Tasks');
+    await until(p, 'No tasks yet');
+  });
+
+  await check(p, 'Reset forgets the saved account and brings the sample data back', async () => {
+    await p.getByRole('button', {name: 'Reset'}).click();
+    await approval(p, 'Buy this').waitFor();
+    await p.reload();
+    await approval(p, 'Buy this').waitFor();
   });
 
   await check(p, 'no errors and no network use', async () => expect(!p.problems.length, p.problems.join('; ')));

@@ -4,18 +4,22 @@
 // which raise the same approvals the gateway's tools raise and wait for the
 // owner's decision. Anywhere else -- a local build, a test, a viewer who
 // declines -- a scripted employee runs the same tools for the kinds of task it
-// recognizes. Either way the services behind the tools are simulated: nothing
-// is really sent, called, browsed or bought, and the page says so.
+// recognizes. Texts, calls, the browser, supplier prices and orders are
+// simulated: nothing is really sent, called, browsed or bought, and the page
+// says so. Gmail and Google Calendar are the exception: with the viewer's
+// connectors they are real, and every write waits for the owner (apps.ts).
 import type {Contact, Run} from '../src/api';
+import {appsBrief, appTools} from './apps';
 import {browse} from './browser';
-import {addArtifact, ask, emit, newId, now, preview, runById, updateRun, type Decision} from './gateway';
+import {addArtifact, ask, emit, newId, now, preview, runById, step, updateRun, type Decision} from './gateway';
 import {compare, offerTotal, orderNumber, quoteFor, type Quote, type Search} from './suppliers';
 
 // --- asking Claude ---------------------------------------------------------
 
 interface SampleTool {name: string; description: string; inputSchema: object; execute(input: Record<string, unknown>, context: {signal: AbortSignal}): unknown}
-type Sample = ((input: string, options?: {signal?: AbortSignal; tools?: SampleTool[]; images?: Blob[]; modelTier?: 'quick' | 'default' | 'complex'; cache?: boolean}) => Promise<{text: string; truncated: boolean}>)
-  & {limits?(): Promise<{images?: {maxCount: number}; tools?: {maxCount: number}}>};
+type SampleOptions = {signal?: AbortSignal; tools?: SampleTool[]; images?: Blob[]; modelTier?: 'quick' | 'default' | 'complex'; cache?: boolean};
+type Sample = ((input: string, options?: SampleOptions) => Promise<{text: string; truncated: boolean}>)
+  & {json?(input: string, options?: SampleOptions): Promise<unknown>; limits?(): Promise<{images?: {maxCount: number}; tools?: {maxCount: number}}>};
 
 let sample: Sample | null = null;
 const can = {images: 0, tools: 0};
@@ -50,6 +54,35 @@ const FAILED: Record<string, string> = {
   image_rejected: 'The photo could not be used. Try sending another one.',
 };
 
+/** Claude will not answer in this view from now on: say so once, and let every later task be scripted. */
+function refuse(code: string) {
+  refused = code === 'not_granted' ? DECLINED : UNAVAILABLE_NOTE;
+  preview.claudeReady = false;
+  emit('connections.updated');
+}
+
+/**
+ * One question about one picture, answered as JSON: the preview's damage inspection. Rejects with the platform's
+ * error shape ({code}) when Claude cannot look at pictures in this view.
+ */
+export async function lookAt(prompt: string, picture: Blob): Promise<unknown> {
+  await ready;
+  if (!sample || refused) throw {code: refused === DECLINED ? 'not_granted' : 'sampling_disabled'};
+  if (!can.images) throw {code: 'images_unavailable'};
+  try {
+    if (typeof sample.json === 'function') return await sample.json(prompt, {images: [picture], modelTier: 'default'});
+    // A viewer without the JSON form: the plain answer, read the same way.
+    const {text} = await sample(prompt, {images: [picture], modelTier: 'default'});
+    const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    try {return JSON.parse(json);} catch {throw {code: 'invalid_json'};}
+  } catch (err) {
+    const code = String((err as {code?: unknown} | null)?.code ?? 'upstream_error');
+    if (UNAVAILABLE.has(code)) refuse(code);
+    if (code === 'images_unavailable') can.images = 0;
+    throw err;
+  }
+}
+
 // --- the tools ---------------------------------------------------------------
 
 /** A page tool is stopped after 150 s, so an approval it waits on gets a little less. */
@@ -74,15 +107,35 @@ const PRICES: [RegExp, number][] = [
 ];
 const guessPrice = (item: string) => PRICES.find(([pattern]) => pattern.test(item))?.[1] ?? 19.99;
 
+/** Who someone is to the owner ("my contractor") and where they work, as saved with the contact. */
+const roleOf = (c: Contact) => `${String(c.organization ?? '')} ${String(c.notes ?? '')}`.toLowerCase();
+/** The contacts a role word fits: "contractor", or "plumber" for Park Plumbing. */
+const withRole = (role: string) => role.length < 4 ? [] : preview.state.contact.filter(c => roleOf(c).includes(role) || roleOf(c).includes(role.replace(/er$/, 'ing')));
+
+/** A contact by name, or by who they are to the owner ("my contractor", "the plumber"), as the gateway finds one. */
 function contact(name: unknown): Contact {
   const wanted = String(name ?? '').trim().toLowerCase();
   const all = preview.state.contact;
   const exact = all.find(c => String(c.name ?? '').toLowerCase() === wanted);
   if (exact) return exact;
   const close = wanted ? all.filter(c => {const n = String(c.name ?? '').toLowerCase(); return n.includes(wanted) || wanted.includes(n) || n.split(' ').includes(wanted);}) : [];
-  if (close.length === 1) return close[0]!;
-  throw new Error(close.length ? `More than one contact matches "${String(name)}": ${close.map(c => c.name).join(', ')}.`
+  const role = wanted.replace(/^(my|our|the)\s+/, '');
+  const found = close.length ? close : withRole(role);
+  if (found.length === 1) return found[0]!;
+  throw new Error(found.length ? `More than one contact matches "${String(name)}": ${found.map(c => c.name).join(', ')}.`
     : `No contact matches "${String(name)}". The owner can add them under Employee, then ask again.`);
+}
+
+/** The contact a task names, or names by role ("text my contractor"). */
+function mentioned(task: string): Contact | undefined {
+  const all = preview.state.contact;
+  const byName = all.find(c => {const name = String(c.name ?? ''); return !!name && [name, name.split(' ')[0]!].some(n => new RegExp(`\\b${escape(n)}\\b`, 'i').test(task));});
+  if (byName) return byName;
+  for (const [, role] of task.matchAll(/\b(?:my|our|the)\s+([a-z]+)/gi)) {
+    const matches = withRole(role!.toLowerCase());
+    if (matches.length === 1) return matches[0];
+  }
+  return undefined;
 }
 
 const REPLIES = ['Thanks, got it!', 'Sounds good, thank you.', 'OK, see you then.'];
@@ -122,6 +175,7 @@ const TOOLS: Tool[] = [
       if (!body) throw new Error('The message is empty.');
       const d = await ask(runId, {tool: 'sms_send', label: 'Send this text', effect: 'communication', details: {contactId: who.id, to: who.phone, body}}, waitMs, signal);
       if (d.kind !== 'approved') return declined(d, 'nothing was sent');
+      step(runId, `Texting ${who.name}`);
       preview.state.communication.unshift({id: newId('comm'), channel: 'sms', direction: 'outbound', to: who.phone, contactId: who.id, body, status: 'delivered', at: now()});
       addArtifact(runId, 'Send this text', [['To', `${who.name} · ${who.phone}`], ['Message', body], ['Status', 'delivered'], ['Preview', 'nothing was really sent']]);
       emit('tool.completed', {runId});
@@ -135,6 +189,7 @@ const TOOLS: Tool[] = [
       if (!objective) throw new Error('Say what the call is for.');
       const d = await ask(runId, {tool: 'phone_call', label: 'Place this call', effect: 'communication', details: {contactId: who.id, to: who.phone, objective}}, waitMs, signal);
       if (d.kind !== 'approved') return declined(d, 'no call was placed');
+      step(runId, `Calling ${who.name}`);
       await sleep(5000, signal);
       addArtifact(runId, 'Place this call', [['To', `${who.name} · ${who.phone}`], ['What the call is for', objective], ['Preview', 'no real call was placed, so there is no transcript']]);
       emit('tool.completed', {runId});
@@ -150,6 +205,7 @@ const TOOLS: Tool[] = [
       const item = String(input.item ?? '').trim().slice(0, 120);
       if (!item) throw new Error('Say which item to price.');
       const search: Search = {item, quantity: whole(input.quantity, 1), specification: String(input.specification ?? '').trim().slice(0, 200), typicalUnitPrice: positive(input.typical_unit_price_usd) ?? guessPrice(item)};
+      step(runId, `Asking every supplier for ${search.quantity} × ${item}`);
       await sleep(1800, signal);
       const {material, offers} = compare(runId, search);
       preview.state.material.unshift(material);
@@ -170,6 +226,7 @@ const TOOLS: Tool[] = [
       const d = await ask(runId, {tool: 'purchase_order', label: 'Buy this', effect: 'financial', details: quote}, waitMs, signal);
       if (d.kind !== 'approved') return declined(d, 'nothing was bought');
       if (Date.now() > Date.parse(quote.expiresAt)) return {status: 'quote expired', result: 'nothing was bought'};
+      step(runId, `Ordering from ${quote.supplier}`);
       const order = placeOrder(runId, quote);
       return {status: 'ordered', order_number: order.orderNumber, supplier: quote.supplier, total: quote.total, fulfillment: quote.fulfillment, note: 'Preview: nothing was really bought.'};
     }},
@@ -200,22 +257,30 @@ const TOOLS: Tool[] = [
       const text = String(input.text ?? '').trim().slice(0, 4000);
       if (!text) throw new Error('Say what to remember.');
       preview.state.memory.unshift({id: newId('memory'), kind: (['profile', 'work', 'note'] as const).find(k => k === input.kind) ?? 'note', text});
+      step(runId, 'Saved to memory');
       emit('tool.completed', {runId});
       return {saved: true};
     }},
 ];
 const tool = (name: string) => TOOLS.find(t => t.name === name)!;
+/**
+ * Every tool Claude can use in this view: the simulated ones and, when connectors can be reached, the owner's real
+ * apps -- first when the task is about email or the calendar, so a view that allows fewer tools still offers them.
+ */
+const allTools = (task: string): Tool[] =>
+  /\b(e-?mails?|gmail|inbox|mail|calendar|events?|meetings?|schedule|invite|appointments?)\b/i.test(task) ? [...appTools(), ...TOOLS] : [...TOOLS, ...appTools()];
 
 // --- what Claude is told ------------------------------------------------------
 
 const WITH_TOOLS = [
-  'You are working inside a preview of the app. Your tools reach simulated services: a text or call reaches nobody, the browser only reaches a sample shop site, supplier prices come from sample catalogs, and an order buys nothing. The owner knows this. Use the tools exactly as you would for real, report what they return, and never say something happened unless a tool reported it. You cannot look anything up on the real web.',
-  'Anything that texts, calls, uses the browser or spends money waits for the owner\'s approval on their phone: the tool asks and returns their decision. If they decline, accept it and do not try another way. Use ask_owner only for a detail you cannot do without. To buy something, compare prices first, then buy the best exact match that fits what you remember about the owner.',
+  'You are working inside a preview of the app. Texts, calls, the browser, supplier prices and orders are simulated: a text or call reaches nobody, the browser only reaches a sample shop site, supplier prices come from sample catalogs, and an order buys nothing. The owner knows this. Use the tools exactly as you would for real, report what they return, and never say something happened unless a tool reported it. You cannot look anything up on the real web.',
+  'Anything that texts, calls, emails, changes the calendar, uses the browser or spends money waits for the owner\'s approval on their phone: the tool asks and returns their decision. If they decline, accept it and do not try another way. Use ask_owner only for a detail you cannot do without. To buy something, compare prices first, then buy the best exact match that fits what you remember about the owner. When the owner names someone by role ("my contractor"), use the contact whose note says so.',
 ].join('\n\n');
-const WITHOUT_TOOLS = 'You are working inside a preview of the app and have no tools in this view, so reply in writing only. You cannot browse the web, text, call, save or buy anything, and must never say that you did. When a task needs one of those, answer what you can and say in one sentence what you would do once connected.';
+const WITHOUT_TOOLS = 'You are working inside a preview of the app and have no tools in this view, so reply in writing only. You cannot browse the web, text, call, email, save or buy anything, and must never say that you did. When a task needs one of those, answer what you can and say in one sentence what you would do once connected.';
 
-function brief(run: Run, photo: 'attached' | 'not passed' | 'none', tools: boolean): string {
+function brief(run: Run, photo: 'attached' | 'not passed' | 'none', tools: boolean, apps: string): string {
   const s = preview.state, agent = s.agent[0]!;
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const skills = s.skill.filter(k => agent.skills.includes(k.id));
   const recent = s.run.filter(r => r.id !== run.id && r.status === 'completed' && r.result).slice(0, 4);
   const material = s.material[0];
@@ -224,10 +289,12 @@ function brief(run: Run, photo: 'attached' | 'not passed' | 'none', tools: boole
     `You are ${agent.name}, the owner's AI employee in the Vision-Bot-Pro phone app (${agent.title}). ${agent.instructions}`,
     skills.length ? `Your skills:\n${skills.map(k => `- ${k.name}: ${k.instructions}`).join('\n')}` : '',
     s.memory.length ? `What you remember about the owner:\n${s.memory.map(m => `- ${m.text}`).join('\n')}` : '',
-    `The owner's contacts. Texts and calls can only go to these people:\n${s.contact.length ? s.contact.map(c => `- ${c.name}, ${c.phone}${c.organization ? `, ${c.organization}` : ''}`).join('\n') : '- none yet (the owner adds people under Employee)'}`,
+    `The owner's contacts. Texts and calls can only go to these people:\n${s.contact.length ? s.contact.map(c => `- ${c.name}, ${c.phone}${c.organization ? `, ${c.organization}` : ''}${c.notes ? ` (${c.notes})` : ''}`).join('\n') : '- none yet (the owner adds people under Employee)'}`,
     recent.length ? `Recent tasks, newest first:\n${recent.map(r => `- ${r.title || r.task}\n  Result: ${String(r.result).slice(0, 400)}`).join('\n')}` : '',
     material && offers.length ? `Latest price comparison, for ${material.description}:\n${offers.map(o => {const total = offerTotal(o); return `- offer_id ${o.id}: ${o.supplier}, ${o.product}, ${money(o.unitPrice)} each, total ${total === null ? 'not fully quoted' : money(total)}, ${o.matchQuality} match`;}).join('\n')}` : '',
     tools ? WITH_TOOLS : WITHOUT_TOOLS,
+    tools ? apps : '',
+    `It is now ${new Date().toLocaleString('en-US', {dateStyle: 'full', timeStyle: 'short'})} where the owner is (${zone}).`,
     photo === 'attached' ? 'The owner sent the attached photo from the phone camera with this task. In this preview the camera shows a drawn sample scene unless the owner picked a photo of their own; describe what is actually in the image.' : '',
     photo === 'not passed' ? 'The owner sent a photo with this task, but it could not be passed to you in this view. Say so in one sentence.' : '',
     run.context?.visualDescription ? `What the camera showed: ${run.context.visualDescription}` : '',
@@ -241,7 +308,7 @@ function brief(run: Run, photo: 'attached' | 'not passed' | 'none', tools: boole
 type Plan =
   | {kind: 'text'; contact: Contact; message: string}
   | {kind: 'call'; contact: Contact; objective: string}
-  | {kind: 'prices'; search: Search; buy: boolean}
+  | {kind: 'prices'; search: Search; buy: boolean; tell?: Contact}
   | {kind: 'browse'; task: string; search: Search}
   | {kind: 'remember'; text: string};
 
@@ -252,16 +319,18 @@ function searchFor(task: string): Search {
     .replace(/^(please\s+)?(can you\s+)?/i, '')
     .replace(/^(compare|check|find|get|look\s+up|search(\s+for)?|price|buy|order|purchase|how much (is|are))\s+(the\s+)?((prices?|pricing|cost)\s+(of|for|on)\s+)?/i, '')
     .replace(/\s+(online|on the web|on a website)\b.*$/i, '')
+    // "a Moen 1222 cartridge, and text my contractor": the item ends where the next instruction starts.
+    .split(/\s*,\s*|\s+(?:and|then)\s+(?=(?:text|message|sms|call|phone|tell|send|email|let|ask|compare|prepare|draft)\b)/i)[0]!
     .split(/\s+for\s+(?:the|my|our)\b/i)[0]!.trim();
   const count = item.match(/^(\d{1,5})\s+/);
   if (count) item = item.slice(count[0].length);
-  item = item.replace(/^(a|an|the|some)\s+/i, '').trim() || 'Item';
+  item = item.replace(/^(a|an|the|some)\s+/i, '').replace(/^(suitable\s+)?replacement\s+(for\s+)?(the\s+)?/i, '').trim() || 'Item';
   return {item: item.charAt(0).toUpperCase() + item.slice(1), quantity: count ? Number(count[1]) : 1, specification: '', typicalUnitPrice: guessPrice(item)};
 }
 
 function draft(task: string, who: Contact): string {
   const name = String(who.name), first = name.split(' ')[0]!;
-  let rest = task.replace(new RegExp(`^.*?\\b(text|sms|message)\\b(\\s+to)?\\s+(${escape(name)}|${escape(first)})\\b[\\s,:]*`, 'i'), '').replace(/^(that|saying|to say)\s+/i, '').trim() || task.trim();
+  let rest = task.replace(new RegExp(`^.*?\\b(text|sms|message)\\b(\\s+to)?\\s+(${escape(name)}|${escape(first)}|(?:my|our|the)\\s+[a-z]+)\\b[\\s,:]*`, 'i'), '').replace(/^(that|saying|to say)\s+/i, '').trim() || task.trim();
   if (!/^(I\b|I'|[A-Z]{2})/.test(rest)) rest = rest.charAt(0).toLowerCase() + rest.slice(1);
   return `Hi ${first}, ${rest}${/[.!?]$/.test(rest) ? '' : '.'}`;
 }
@@ -269,12 +338,15 @@ function draft(task: string, who: Contact): string {
 /** The kinds of task the scripted employee knows, from the words used. */
 function route(task: string): Plan | null {
   const t = task.trim();
-  const who = preview.state.contact.find(c => {const name = String(c.name ?? ''); return !!name && [name, name.split(' ')[0]!].some(n => new RegExp(`\\b${escape(n)}\\b`, 'i').test(t));});
+  const who = mentioned(t);
+  const pricing = /\b(price|prices|pricing|compare|cost|quote|cheapest|how much|replacement)\b/i.test(t);
   if (/^(please\s+)?remember\b|\bremember that\b/i.test(t)) return {kind: 'remember', text: t.replace(/^(please\s+)?remember(\s+that)?[\s:,]*/i, '').trim() || t};
+  // "Find a replacement, compare prices and message my contractor": the prices first, then a text about them.
+  if (who && pricing && /\b(text|sms|message|tell|let)\b/i.test(t)) return {kind: 'prices', search: searchFor(t), buy: false, tell: who};
   if (who && /\b(text|sms|message)\b/i.test(t)) return {kind: 'text', contact: who, message: draft(t, who)};
   if (who && /\b(call|phone|ring)\b/i.test(t)) return {kind: 'call', contact: who, objective: t};
   if (/\b(buy|order|purchase)\b/i.test(t)) return {kind: 'prices', search: searchFor(t), buy: true};
-  if (/\b(price|prices|pricing|compare|cost|quote|cheapest|how much)\b/i.test(t)) return {kind: 'prices', search: searchFor(t), buy: false};
+  if (pricing) return {kind: 'prices', search: searchFor(t), buy: false};
   if (/\b(browse|browser|website|online|look\s+up|search)\b/i.test(t)) return {kind: 'browse', task: t, search: searchFor(t)};
   return null;
 }
@@ -283,11 +355,12 @@ const HELP = [
   'This preview is running without Claude, so a scripted employee answered. It knows these kinds of task:',
   '- Text Maria that the plumber is running late',
   '- Call Joe Park to confirm Thursday at 10',
+  '- Price a Moen 1222 cartridge and text my contractor',
   '- Compare prices for 10 shower cartridges',
   '- Buy 40 M6 stainless bolts',
   '- Look up a Moen 1222 cartridge online',
   '- Remember that the gate code is 4412',
-  'Open this page on claude.ai or in the Claude app and allow it to use Claude when asked, and your employee answers anything.',
+  'Open this page on claude.ai or in the Claude app and allow it to use Claude when asked, and your employee answers anything, looks at photos, and works with your Gmail and Google Calendar.',
 ].join('\n');
 const PHOTO_HELP = 'The scripted employee cannot look at photos. With Claude allowed, your employee describes what the camera shows and answers your question about it.';
 
@@ -320,6 +393,15 @@ async function carryOut(runId: string, plan: Plan, signal: AbortSignal): Promise
     best ? `The cheapest exact match is **${best.supplier}**: ${money(best.total)} for ${prices.quantity}${best.pickup !== 'not available' ? `, pickup ${best.pickup.toLowerCase()}` : `, delivered ${best.delivery}`}.` : 'None of them had an exact match.',
     prices.not_answering.length ? `${prices.not_answering.join(' and ')} did not answer in time, so there may be a better price.` : '',
     'The comparison is under Tasks; its prices come from the preview\'s sample catalogs.'].filter(Boolean).join(' ');
+  if (plan.tell) {
+    // The message is ready for the owner to approve, word for word, before it goes anywhere.
+    const who = plan.tell, first = String(who.name).split(' ')[0], item = plan.search.item.toLowerCase();
+    const message = best ? `Hi ${first}, I found a replacement ${item}: ${best.product} from ${best.supplier}, ${money(best.total)}${best.pickup !== 'not available' ? ', ready for pickup' : `, delivered ${best.delivery}`}. Can you fit it this week?`
+      : `Hi ${first}, I'm looking for a replacement ${item} but no supplier had an exact match yet. Can you take a look?`;
+    const r = await use('send_text', {contact: who.name, message});
+    // The outcome first: it is what the owner is waiting to hear, and Today shows the start of a result.
+    return r.status === 'sent' ? `Texted **${r.name}** after you approved it: "${r.message}"\n\n${summary}\n\nIn this preview nothing really went out.` : `${notDone(r, `text to ${who.name}`)}\n\n${summary}`;
+  }
   if (!plan.buy || !best) return summary;
   // Pickup when the yard offers it, as the owner's memory prefers.
   const r = await use('buy', {offer_id: best.offer_id, quantity: prices.quantity, fulfillment: best.pickup !== 'not available' ? 'pickup' : 'delivery'});
@@ -351,16 +433,18 @@ async function work(run: Run, signal: AbortSignal): Promise<void> {
   if (sample && !refused && (can.tools || !plan)) return withClaude(run, signal, photos, can.tools > 0);
   await sleep(1200, signal);
   const lead = refused ? `${refused}\n\n` : '';
-  finish(run.id, lead + (plan ? await carryOut(run.id, plan, signal) : photos.length ? PHOTO_HELP : HELP));
+  // A task about a photo is never carried out blind.
+  finish(run.id, lead + (photos.length ? PHOTO_HELP : plan ? await carryOut(run.id, plan, signal) : HELP));
 }
 
 async function withClaude(run: Run, signal: AbortSignal, photos: Blob[], tools: boolean): Promise<void> {
   const images = photos.slice(0, can.images);
+  step(run.id, images.length ? 'Claude is looking at your photo' : 'Claude is working on it');
   try {
-    const {text, truncated} = await sample!(brief(run, images.length ? 'attached' : photos.length ? 'not passed' : 'none', tools), {
+    const {text, truncated} = await sample!(brief(run, images.length ? 'attached' : photos.length ? 'not passed' : 'none', tools, tools ? await appsBrief() : ''), {
       signal, modelTier: 'default',
       // A call with tools is never cached; a plain one must not replay an old answer either.
-      ...(tools ? {tools: TOOLS.slice(0, can.tools).map(t => ({name: t.name, description: t.description, inputSchema: t.inputSchema,
+      ...(tools ? {tools: allTools(run.task).slice(0, can.tools).map(t => ({name: t.name, description: t.description, inputSchema: t.inputSchema,
         execute: (input: Record<string, unknown>, context: {signal: AbortSignal}) => t.run(run.id, input, context.signal, CLAUDE_WAIT)}))} : {cache: false}),
       ...(images.length ? {images} : {}),
     });
@@ -370,12 +454,7 @@ async function withClaude(run: Run, signal: AbortSignal, photos: Blob[], tools: 
     if (code === 'cancelled' || signal.aborted) return;
     if (code === 'tools_unavailable') {can.tools = 0; return work(run, signal);}
     if (code === 'images_unavailable') {can.images = 0; return work(run, signal);}
-    if (UNAVAILABLE.has(code)) {
-      refused = code === 'not_granted' ? DECLINED : UNAVAILABLE_NOTE;
-      preview.claudeReady = false;
-      emit('connections.updated');
-      return work(run, signal);
-    }
+    if (UNAVAILABLE.has(code)) {refuse(code); return work(run, signal);}
     updateRun(run.id, {status: 'failed', error: FAILED[code] ?? FAILED_DEFAULT});
   }
 }

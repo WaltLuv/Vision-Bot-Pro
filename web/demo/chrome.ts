@@ -1,8 +1,11 @@
-// What the published page adds around the app: a line saying it is a preview,
-// a way to use your own photo as the camera, a reset, a viewer for evidence,
-// and a confirm step that works where the browser's own dialog cannot open.
+// What the published page adds around the app: a line saying it is a preview
+// and what in it is real, a way to use your own photo as the camera, a reset,
+// a viewer for evidence, and a confirm step that works where the browser's own
+// dialog cannot open.
 import {h} from '../src/dom';
+import {apps, appsReady} from './apps';
 import {preview} from './gateway';
+import {saving, whenSavingStops} from './persist';
 
 let line: HTMLElement | null = null;
 let photoButton: HTMLElement | null = null;
@@ -14,11 +17,12 @@ export function toast(message: string) {
 }
 
 export function setSignedIn(yes: boolean) {
-  if (line) line.textContent = yes ? 'Preview on sample data. Texts, calls, the browser and orders are simulated.' : 'Preview: any access code signs you in.';
+  if (line) line.textContent = !yes ? 'Preview: any access code signs you in.'
+    : `Preview on sample data${saving() ? ', saved for you' : ''}. Texts, calls${apps.available() ? '' : ', the browser'} and orders are simulated${apps.available() ? '; Gmail and Calendar are real once you connect them' : ''}.`;
   if (photoButton) photoButton.hidden = !yes;
 }
 
-export function installPreviewChrome(options: {usePhoto?: (file: File) => Promise<void>; reset(): void}) {
+export function installPreviewChrome(options: {usePhoto?: (file: File) => Promise<void>; reset(): Promise<boolean>}) {
   const picker = h('input', {type: 'file', accept: 'image/*', hidden: true, 'aria-label': 'Photo to use as the camera'});
   picker.addEventListener('change', async () => {
     const file = picker.files?.[0];
@@ -34,8 +38,13 @@ export function installPreviewChrome(options: {usePhoto?: (file: File) => Promis
   line = h('span', {class: 'preview-text'});
   photoButton = options.usePhoto ? h('button', {class: 'preview-button', type: 'button', onclick: () => picker.click()}, 'Use my photo') : null;
   document.body.prepend(h('div', {class: 'preview-label', role: 'note'}, line,
-    h('span', {class: 'preview-actions'}, photoButton, h('button', {class: 'preview-button', type: 'button', onclick: () => options.reset()}, 'Reset'), picker)));
+    h('span', {class: 'preview-actions'}, photoButton, h('button', {class: 'preview-button', type: 'button', onclick: () => void reset()}, 'Reset'), picker)));
   setSignedIn(preview.signedIn);
+  void appsReady.then(() => setSignedIn(preview.signedIn));
+  whenSavingStops(why => {toast(why); setSignedIn(preview.signedIn);});
+  const reset = async () => {
+    if (!await options.reset()) toast('Your saved preview could not be cleared just now. Try again in a moment.');
+  };
 
   // Evidence opens in a new tab on the gateway, an offer at its supplier, and
   // Google sign-in on the gateway. A published page has none of them, so
