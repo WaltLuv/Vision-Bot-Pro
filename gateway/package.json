@@ -12,7 +12,8 @@
     "trace": "tsx src/trace-cli.ts",
     "trace:export": "tsx src/trace-export-cli.ts",
     "test": "node --import tsx --test tests/*.test.ts",
-    "lint": "prettier --check src/employee tests"
+    "lint": "prettier --check src/employee tests",
+    "live-check": "tsx src/live-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
