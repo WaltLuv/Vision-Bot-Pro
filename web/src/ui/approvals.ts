@@ -1,6 +1,6 @@
 import {api, type Approval, type Contact} from '../api';
 import {h} from '../dom';
-import {approvalRows, EFFECT_LABEL, NO_STANDING_APPROVAL} from '../store';
+import {approvalRows, EFFECT_LABEL, NO_STANDING_APPROVAL, NO_STANDING_TOOLS} from '../store';
 
 // An approval card states exactly what is being authorised. For a purchase that
 // means supplier, items, quantities and total as separate rows taken from the
@@ -32,7 +32,7 @@ export function approvalCard(approval: Approval, after: () => void, fail: (messa
       h('button', {class: 'ghost', onclick: () => void decide('deny')}, 'Not now'),
       // Standing permission is never offered for money, deletion or outbound
       // messages: those are the effects that must stay a per-action decision.
-      !answering && !NO_STANDING_APPROVAL.has(approval.effect)
+      !answering && !NO_STANDING_APPROVAL.has(approval.effect) && !NO_STANDING_TOOLS.has(approval.tool)
         ? h('button', {class: 'ghost', onclick: () => void decide('always')}, 'Always allow this')
         : null,
     ),

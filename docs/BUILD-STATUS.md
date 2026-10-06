@@ -136,6 +136,16 @@ tests. None has run against a live account in this repository.
 | The Home Depot, Lowe's, Amazon, Walmart without a partner connection | Web search (Google through Gemini) | IMPLEMENTED + VERIFIED against fixtures and in the lab — a price is kept only when Google ties it to a product page on the store's own site; labelled Web search, stock unconfirmed, never quoted or bought here; live Gemini BLOCKED ON OWNER CREDENTIAL (top-up) |
 | Any website, read in a browser | Browserbase browser + `offer_record` | IMPLEMENTED + VERIFIED against fixtures — the employee reads a price on a supplier's site and records it; it joins the comparison marked as read from a website and unverified, and checkout refuses it (no supplier connection can quote an exact total), so the owner buys it on the site. Stagehand is not used: the employee drives the browser through the gateway's own governed step tools |
 
+### Connected apps and routines
+
+| Capability | Status |
+|---|---|
+| Connect, check and disconnect an app (Composio connect link, status, revoke), owner-scoped, behind cookie auth and CSRF | IMPLEMENTED + VERIFIED against a Composio stand-in, through HTTP and in a real browser round trip; live Composio BLOCKED ON OWNER CREDENTIAL (`COMPOSIO_API_KEY`) |
+| Governed app actions (`app_read`, `app_update`, `app_send`, `app_delete`): effect classified from the action, pinned to the owner's account, every non-read approved per call, uncertain outcomes never repeated | IMPLEMENTED + VERIFIED against fixtures |
+| Connect prompt when a task needs an app that is not connected | IMPLEMENTED + VERIFIED (unit) |
+| Recurring routines (daily, weekdays, weekly; time zone aware), delivery to chat or an app, last-run result, pause and resume, idea templates | IMPLEMENTED + VERIFIED against fixtures and in a real browser |
+| Natural-language routine parsing ("every Friday at 4") | NOT IMPLEMENTED: the phone uses a form; delivery is inferred from the wording |
+
 The field mappings for Home Depot and Lowe's are defaults against partner
 catalog shapes and should be confirmed against the endpoint an owner is granted.
 Every mapping is overridable per deployment.

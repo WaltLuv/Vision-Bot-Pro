@@ -4,12 +4,21 @@ import {forgetEdits} from '../fields';
 import {humanise} from '../store';
 import type {Ctx} from './ctx';
 
+const AVATARS = ['✦', '🛠️', '🏠', '🔧', '📋', '🦺', '🔍', '🤖'];
+
 export function employee(ctx: Ctx): HTMLElement {
   const agent = ctx.state.agent[0];
   if (!agent) return h('div', {class: 'screen'}, h('section', {class: 'card'}, h('p', {text: 'Loading…'})));
 
   const name = h('input', {class: 'field', value: agent.name, 'aria-label': 'Name'});
   const title = h('input', {class: 'field', value: agent.title ?? '', 'aria-label': 'Role'});
+  // The face on the employee: a symbol, not an uploaded picture, so nothing personal leaves the phone for it.
+  let avatar = agent.avatar ?? '✦';
+  const avatars = AVATARS.map(symbol => {
+    const b = h('button', {class: `ghost avatar ${symbol === avatar ? 'on' : ''}`, 'aria-pressed': String(symbol === avatar), 'aria-label': `Use ${symbol} as its picture`}, symbol);
+    b.addEventListener('click', () => {avatar = symbol; for (const o of avatars) {o.classList.toggle('on', o === b); o.setAttribute('aria-pressed', String(o === b));}});
+    return b;
+  });
   const instructions = h('textarea', {class: 'composer', rows: 4, 'aria-label': 'How it should work'});
   instructions.value = agent.instructions ?? '';
 
@@ -26,7 +35,7 @@ export function employee(ctx: Ctx): HTMLElement {
       // runtime is preserved exactly as the server set it. Which engine runs the
       // work is a server-side, owner-scoped decision and is deliberately not a
       // control here.
-      await api.saveAgent({name: name.value.trim(), title: title.value.trim(), instructions: instructions.value, runtime: agent.runtime, skills: [...chosen]});
+      await api.saveAgent({name: name.value.trim(), title: title.value.trim(), instructions: instructions.value, runtime: agent.runtime, skills: [...chosen], avatar});
       forgetEdits();
       await ctx.refresh();
       ctx.toast('Saved.');
@@ -38,6 +47,7 @@ export function employee(ctx: Ctx): HTMLElement {
   return h('div', {class: 'screen'},
     h('section', {class: 'card'},
       h('h3', {text: 'Your employee'}),
+      h('label', {class: 'label', text: 'Picture'}), h('div', {class: 'row wrap avatars'}, ...avatars),
       h('label', {class: 'label', text: 'Name'}), name,
       h('label', {class: 'label', text: 'Role'}), title,
       h('label', {class: 'label', text: 'How it should work'}), instructions,

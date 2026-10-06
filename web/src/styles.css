@@ -102,10 +102,10 @@ a.ghost { border-color: var(--line); }
 
 .tabs { display: flex; gap: 4px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); position: sticky; bottom: 0; }
 .tab {
-  /* Five areas have to fit a 375px screen: shrink from a zero basis, allow the
+  /* Six areas have to fit a 375px screen: shrink from a zero basis, allow the
      label to be narrower than its text, and keep the touch target 48px tall. */
   flex: 1 1 0; min-width: 0; background: none; border: 0; color: var(--muted);
-  font-size: .74rem; min-height: 48px; padding: 6px 2px;
+  font-size: .68rem; min-height: 48px; padding: 6px 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tab.on { color: var(--ink); background: var(--panel-2); font-weight: 600; }
@@ -144,3 +144,10 @@ a.ghost { border-color: var(--line); }
 .live-shield { position: absolute; inset: 0; background: transparent; cursor: not-allowed; }
 .live-message { position: absolute; left: 16px; right: 16px; top: 40%; margin: 0; text-align: center; color: var(--muted); }
 .live-foot { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+
+/* Connected apps, routines, the employee's picture. */
+.app-needed { border-color: var(--accent); }
+.app-needed .task { margin: 0; }
+.row-item.app-row .row, .row-item.idea .note { flex-basis: 100%; }
+.avatars .avatar { min-width: 44px; min-height: 44px; font-size: 1.2rem; padding: 0; }
+.avatars .avatar.on { border-color: var(--accent); background: var(--panel); }

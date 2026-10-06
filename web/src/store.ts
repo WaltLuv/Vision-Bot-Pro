@@ -41,6 +41,17 @@ export const EFFECT_LABEL: Record<string, string> = {
  * never presents it as a choice for those.
  */
 export const NO_STANDING_APPROVAL: ReadonlySet<string> = new Set(['financial', 'destructive', 'communication']);
+/** Tools whose every call is its own decision whatever the effect: a change to whichever connected app the employee picks. */
+export const NO_STANDING_TOOLS: ReadonlySet<string> = new Set(['app_update', 'app_send', 'app_delete']);
+const APP_NAME: Record<string, string> = {gmail: 'Gmail', outlook: 'Outlook', googlecalendar: 'Google Calendar', slack: 'Slack', microsoftteams: 'Microsoft Teams', discord: 'Discord', notion: 'Notion', googlesheets: 'Google Sheets', googledocs: 'Google Docs', instagram: 'Instagram', youtube: 'YouTube'};
+
+/** A connected-app action, as the owner approves it: which app, what action, and each argument on its own line. */
+function appActionRows(d: Record<string, any>): {label: string; value: string}[] {
+  const app = String(d.app), slug = String(d.action ?? ''), prefix = app === 'microsoftteams' ? 'MICROSOFT_TEAMS' : slug.split('_')[0] ?? '';
+  const rows = [{label: 'App', value: APP_NAME[app] ?? app}, {label: 'Action', value: humanise(slug.slice(prefix.length + 1).toLowerCase()) || slug}];
+  for (const [k, v] of Object.entries(d.arguments ?? {})) if (v !== undefined && v !== null && v !== '') rows.push({label: humanise(k), value: typeof v === 'object' ? JSON.stringify(v, null, 1) : String(v)});
+  return rows;
+}
 
 export const isTerminal = (run: Run) => TERMINAL.has(run.status);
 
@@ -107,6 +118,7 @@ export function purchaseRows(d: Record<string, any>): {label: string; value: str
 export function approvalRows(approval: Approval, contacts: Contact[] = []): {label: string; value: string}[] {
   const details = approval.details ?? {};
   if (approval.effect === 'financial' && Array.isArray(details.items) && typeof details.total === 'number') return purchaseRows(details);
+  if (NO_STANDING_TOOLS.has(approval.tool) && typeof details.app === 'string') return appActionRows(details);
   return Object.entries(details)
     .filter(([k, v]) => v !== undefined && v !== null && v !== '' && !(k === 'contactId' && 'to' in details))
     .map(([k, v]) => {

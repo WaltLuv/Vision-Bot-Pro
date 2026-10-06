@@ -76,6 +76,16 @@ cannot work.
   `COMMUNICATION_ROUTES` (`{"+1555...":"owner"}`), which `deploy/local.sh`
   writes for you. Both webhooks need `PUBLIC_BASE_URL` to be a public https
   address.
+- **Connected apps** (Gmail, Outlook, Google Calendar, Slack, Microsoft Teams,
+  Discord, Notion, Google Sheets, Google Docs, Instagram, YouTube): a Composio
+  project key in `COMPOSIO_API_KEY` (server only). In the Composio dashboard,
+  create an auth config for each app you want offered; the gateway uses the
+  first enabled one per app, or the one named in `COMPOSIO_<APP>_AUTH_CONFIG_ID`
+  (for example `COMPOSIO_GMAIL_AUTH_CONFIG_ID`). Add
+  `${PUBLIC_BASE_URL}/?connected=*` as an allowed redirect if your auth configs
+  restrict them. Each person then connects their own accounts from Settings,
+  under Connected apps. Not verified against a live Composio project from this
+  repository; see `docs/COMPOSIO.md`.
 - **Phone calls**: Retell `RETELL_API_KEY`, `RETELL_FROM`, `RETELL_AGENT_ID`,
   with its webhook pointed at `${PUBLIC_BASE_URL}/webhooks/voice`.
 - **Web search**: a Gemini key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) is

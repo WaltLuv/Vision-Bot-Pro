@@ -19,7 +19,16 @@ export interface Agent extends Row {name: string; title: string; instructions: s
 export interface Skill extends Row {key: string; name: string; instructions: string}
 export interface Memory extends Row {kind: 'profile' | 'work' | 'note' | 'workspace'; text: string}
 export interface Contact extends Row {name?: string}
-export interface Workflow extends Row {name: string; task: string; scheduledAt?: string; enabled: boolean}
+export type Delivery = 'chat' | 'gmail' | 'outlook' | 'slack' | 'googlecalendar' | 'notion' | 'googlesheets' | 'googledocs' | 'microsoftteams' | 'discord';
+export interface Repeat {frequency: 'daily' | 'weekdays' | 'weekly'; time: string; weekday?: string; timezone: string}
+/** Run once (scheduledAt), on a repeat (a routine), or only when asked. The server words the schedule. */
+export interface Workflow extends Row {
+  name: string; task: string; scheduledAt?: string; enabled: boolean; repeat?: Repeat; schedule?: string; delivery?: Delivery; template?: string;
+  nextRunAt?: string; lastRunAt?: string; lastRunStatus?: RunStatus; lastRunSummary?: string; runsCount?: number;
+}
+export type AppStatus = 'not_connected' | 'pending' | 'connected' | 'failed' | 'revoked';
+/** A connected app (Gmail, Slack, Calendar…). Account ids never reach the phone; only who it is connected as. */
+export interface AppConnection {id: string; name: string; category: string; description: string; status: AppStatus; connectedLabel: string | null; connectedEmail: string | null; lastCheckedAt: string | null}
 export interface Action extends Row {runId: string; name: string; status: string; effect: Effect}
 /** A browser the employee is using. liveEmbed is the provider's live view, present only while it runs and only from an allowed host. */
 export interface Computer extends Row {runId: string; task: string; status: 'queued' | 'starting' | 'working' | 'completed' | 'failed' | 'cancelled' | 'closed' | 'cleanup_pending'; control?: 'agent' | 'owner'; liveEmbed?: string | null; liveHost?: string}
@@ -57,6 +66,8 @@ export interface Connections {
   runtime?: 'hermes' | 'anthropic' | 'claude';
   realtime: boolean; hermes: boolean; anthropic: boolean; claude?: boolean; sms: boolean; voice: boolean;
   products: boolean; browser: boolean; search?: boolean; suppliers: SupplierConnection[];
+  /** Connected apps (Gmail, Slack, Calendar…) are set up on this server. */
+  apps?: boolean;
   mcp: {id: string; tools: string[]}[]; mcpError?: string;
 }
 
@@ -113,7 +124,7 @@ export const api = {
   reconcile: (actionId: string, evidence: string) =>
     call<void>('POST', `/api/actions/${encodeURIComponent(actionId)}/reconcile`, {evidence}),
 
-  saveAgent: (agent: Pick<Agent, 'name' | 'title' | 'instructions' | 'runtime' | 'skills'> & Partial<Pick<Agent, 'provider' | 'model'>>) =>
+  saveAgent: (agent: Pick<Agent, 'name' | 'title' | 'instructions' | 'runtime' | 'skills'> & Partial<Pick<Agent, 'provider' | 'model' | 'avatar'>>) =>
     call<Agent>('PUT', '/api/agent', agent),
 
   addMemory: (kind: Memory['kind'], text: string) => call<Memory>('POST', '/api/memory', {kind, text}),
@@ -131,7 +142,17 @@ export const api = {
   addWorkflow: (name: string, task: string, scheduledAt?: string) =>
     call<Workflow>('POST', '/api/workflows', scheduledAt ? {name, task, scheduledAt} : {name, task}),
   removeWorkflow: (id: string) => call<void>('DELETE', `/api/workflows/${encodeURIComponent(id)}`),
+  addRoutine: (routine: {name: string; task: string; repeat: Repeat; delivery?: Delivery; template?: string}) => call<Workflow>('POST', '/api/workflows', routine),
+  setWorkflowEnabled: (id: string, enabled: boolean) => call<Workflow>('PATCH', `/api/workflows/${encodeURIComponent(id)}`, {enabled}),
   runWorkflow: (id: string, key: string) => call<Run>('POST', `/api/workflows/${encodeURIComponent(id)}/run`, {}, {'idempotency-key': key}),
+
+  // Connected apps. Connecting returns a one-time sign-in link this page navigates to; the provider sends the
+  // person back to /?connected=<app>, and the status check then confirms it with the server.
+  composioTools: () => call<{enabled: boolean; tools: AppConnection[]}>('GET', '/api/composio/tools'),
+  composioConnections: () => call<{enabled: boolean; connections: AppConnection[]}>('GET', '/api/composio/connections'),
+  startComposioConnection: (id: string) => call<AppConnection & {connectUrl: string | null}>('POST', `/api/composio/tools/${encodeURIComponent(id)}/connect`, {}),
+  checkComposioConnection: (id: string) => call<AppConnection>('GET', `/api/composio/tools/${encodeURIComponent(id)}/status`),
+  disconnectComposio: (id: string) => call<AppConnection>('POST', `/api/composio/tools/${encodeURIComponent(id)}/disconnect`, {}),
 
   stopComputer: (id: string) => call<void>('POST', `/api/computers/${encodeURIComponent(id)}/stop`, {}),
   // The gateway pauses the employee at the browser provider before it answers;
@@ -152,6 +173,8 @@ export type GatewayEvent =
   | {seq: number; type: 'approval.decided'; runId: string; approvalId: string; decision: string; at: string}
   | {seq: number; type: 'tool.started' | 'tool.completed' | 'tool.failed' | 'tool.permission'; runId: string; at: string; [k: string]: any}
   | {seq: number; type: 'communication.updated'; at: string; [k: string]: any}
+  | {seq: number; type: 'connector.updated'; connector: string; status: AppStatus; at: string}
+  | {seq: number; type: 'connector.needed'; connector: string; runId: string; at: string}
   | {seq: number; type: 'stream.ready'};
 
 /**

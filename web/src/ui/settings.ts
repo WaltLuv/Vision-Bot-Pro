@@ -2,6 +2,7 @@ import {api} from '../api';
 import {h} from '../dom';
 import {ACCESS_METHOD_LABEL} from '../store';
 import type {Ctx} from './ctx';
+import {connectorsCard} from './connectors';
 
 /**
  * Suppliers are a list, not a single on/off capability. Which ones are
@@ -77,6 +78,7 @@ export function settings(ctx: Ctx): HTMLElement {
       // not something the person did, so it is phrased that way.
       c?.mcpError ? h('p', {class: 'note', text: 'Some connected tools are misconfigured on the server.'}) : null,
     ),
+    connectorsCard(ctx),
     suppliersCard(ctx),
     h('section', {class: 'card'},
       h('h3', {text: 'Account'}),

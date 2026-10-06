@@ -12,6 +12,8 @@ import {today} from './ui/today';
 import {tasks} from './ui/tasks';
 import {employee} from './ui/employee';
 import {settings} from './ui/settings';
+import {routines} from './ui/routines';
+import {appNeededBanner} from './ui/connectors';
 import {camera} from './ui/camera';
 import {updateLive, watchBrowser} from './ui/live';
 
@@ -22,6 +24,8 @@ let stopStream: (() => void) | null = null;
 const ctx: Ctx = {
   state: emptyState(),
   connections: null,
+  apps: null,
+  appNeeded: null,
   streamOnline: false,
   sessionState: 'idle',
   camera: new Camera(),
@@ -42,6 +46,7 @@ const ctx: Ctx = {
       const [state, connections] = await Promise.all([api.state(), api.connections().catch(() => ctx.connections)]);
       ctx.state = state as State;
       ctx.connections = (connections ?? null) as Connections | null;
+      if (ctx.connections?.apps) ctx.apps = (await api.composioTools().catch(() => null))?.tools ?? ctx.apps;
     } catch {/* keep what is on screen */}
     render();
   }),
@@ -66,16 +71,17 @@ ctx.session = new RealtimeSession({
 const TABS: {id: Tab; label: string}[] = [
   {id: 'today', label: 'Today'},
   {id: 'tasks', label: 'Tasks'},
+  {id: 'routines', label: 'Routines'},
   {id: 'employee', label: 'Employee'},
   {id: 'camera', label: 'Camera'},
   {id: 'settings', label: 'Settings'},
 ];
 
 function shell(): HTMLElement {
-  const screen = ctx.tab === 'tasks' ? tasks(ctx) : ctx.tab === 'employee' ? employee(ctx) : ctx.tab === 'camera' ? camera(ctx) : ctx.tab === 'settings' ? settings(ctx) : today(ctx);
+  const screen = ctx.tab === 'tasks' ? tasks(ctx) : ctx.tab === 'routines' ? routines(ctx) : ctx.tab === 'employee' ? employee(ctx) : ctx.tab === 'camera' ? camera(ctx) : ctx.tab === 'settings' ? settings(ctx) : today(ctx);
   return h('div', {class: 'app'},
     !ctx.streamOnline ? h('div', {class: 'banner', role: 'status', text: 'Offline — reconnecting…'}) : null,
-    h('main', {class: 'main'}, screen),
+    h('main', {class: 'main'}, appNeededBanner(ctx), screen),
     h('nav', {class: 'tabs', role: 'tablist'}, ...TABS.map(t =>
       h('button', {class: `tab ${ctx.tab === t.id ? 'on' : ''}`, role: 'tab', 'aria-selected': String(ctx.tab === t.id), onclick: () => ctx.go(t.id)}, t.label))),
   );
@@ -100,17 +106,36 @@ async function start(owner: string) {
   // Show the app before its contents arrive. Waiting on the first load meant one
   // slow or refused request left you on the sign-in screen as if never signed in.
   render();
-  void ctx.refresh();
+  void ctx.refresh().then(() => returnedFromApp());
   stopStream = subscribe(
     event => {
       // The event says something changed and names the run; the authoritative
       // record is refetched rather than patched locally, so the UI can never
       // drift from the server's view of a run's status.
+      if (event.type === 'connector.needed') ctx.appNeeded = event.connector;
       if (event.type) void ctx.refresh();
     },
     online => {ctx.streamOnline = online; render();},
   );
   render();
+}
+
+/**
+ * Back from an app's sign-in page (/?connected=gmail): confirm with the server rather than trusting the address,
+ * say how it went, and tidy the address so a reload does not check again.
+ */
+async function returnedFromApp() {
+  const id = new URLSearchParams(location.search).get('connected');
+  if (!id) return;
+  history.replaceState(null, '', location.pathname);
+  ctx.tab = 'settings';
+  try {
+    const r = await api.checkComposioConnection(id);
+    toast(r.status === 'connected' ? `${r.name} is connected${r.connectedLabel ? ` as ${r.connectedLabel}` : ''}.` : `${r.name} is not connected yet. Try again from Connected apps.`);
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'That app could not be checked.');
+  }
+  await ctx.refresh();
 }
 
 async function boot() {
