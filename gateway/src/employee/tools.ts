@@ -13,7 +13,9 @@ export interface ToolContext {owner:string;runId:string;actionId:string;assertAu
 // title is what the owner sees on an approval; description is written for the model.
 // alwaysAsk: every call needs its own approval and no standing "always allow" can be granted, for a tool whose
 // effect is too broad to pre-approve (a write to whichever connected app the model picks).
-export interface Tool {id:string;description:string;title?:string;effect:Effect;alwaysAsk?:boolean;owners?:string[];schema:z.ZodType<any>;run:(args:any,ctx:ToolContext)=>Promise<any>}
+// alreadyDone: the call would change nothing (the browser it asks for is already open for this task), so there is
+// nothing to approve. Never consulted for financial effects.
+export interface Tool {id:string;description:string;title?:string;effect:Effect;alwaysAsk?:boolean;alreadyDone?:(owner:string,runId:string,args:any)=>boolean;owners?:string[];schema:z.ZodType<any>;run:(args:any,ctx:ToolContext)=>Promise<any>}
 export function canonical(x:any):string{return JSON.stringify(x&&typeof x==='object'?(Array.isArray(x)?x.map(v=>JSON.parse(canonical(v))):Object.fromEntries(Object.keys(x).sort().filter(k=>x[k]!==undefined).map(k=>[k,JSON.parse(canonical(x[k]))]))):x);}
 export class ToolGateway {
  readonly tools=new Map<string,Tool>();
@@ -36,7 +38,7 @@ export class ToolGateway {
   let approval=this.db.list(owner,'approval',-1).find(a=>a.actionId===action!.id);
   if(approval&&approval.expiresAt<Date.now())throw Error('Approval expired; request a fresh action');
   if(approval?.status==='denied')throw Error('Action was declined');
-  if((policy==='ask'||tool.effect==='financial')&&approval?.status!=='approved'){
+  if((policy==='ask'||tool.effect==='financial')&&approval?.status!=='approved'&&!(tool.effect!=='financial'&&tool.alreadyDone?.(owner,runId,args))){
    if(!approval){approval=this.db.create(owner,'approval',{actionId:action.id,runId,tool:name,label:tool.title??tool.description,effect:tool.effect,details:args,status:'pending',expiresAt:Date.now()+30*60_000});this.db.event(owner,'approval.requested',{runId,approvalId:approval.id});}
    this.db.put(owner,'run',{...run,status:'needs_user'});
    return {approvalId:approval.id,status:'needs_user'};

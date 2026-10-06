@@ -103,6 +103,9 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
  register(t:ToolGateway){
   t.register({id:'browser_open',effect:'computer',title:'Open a browser you can watch',schema:z.object({purpose:z.string().min(3).max(300),session:z.enum(['guest','account']).default('guest')}),
    description:'Open a live web browser for this task, to read and use websites step by step. The owner can watch it and take it over. session guest (default) is a fresh browser for looking things up; session account comes back signed in to the owner\'s own Home Depot or Lowe\'s accounts, for Pro Xtra or volume pricing and staging a cart. It will not type passwords or payment details or place orders; when a site needs a sign-in, the owner takes over and signs in.',
+   // The head start may have opened this task's browser already: asking for it again changes nothing, so no card.
+   // Asking for the owner's signed-in browser when a guest one is open is a different request and still asks.
+   alreadyDone:(owner,runId,a)=>{const o=this.open.get(this.key({owner,runId}));return !!o&&(a.session??'guest')===(o.account?'account':'guest');},
    run:async(a,c)=>this.openFor(c,a.purpose,{session:a.session})});
   t.register({id:'browser_goto',effect:'read',schema:z.object({url:z.string().url().refine(u=>/^https?:\/\//i.test(u),'Only web addresses can be opened')}),
    description:'Go to a web address in the open browser',

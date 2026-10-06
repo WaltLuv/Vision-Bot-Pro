@@ -79,9 +79,12 @@ test('a web task gets its live browser and a quick search at once, before the em
  const db=new Store(':memory:'),tools=new ToolGateway(db),bb=new BrowserbaseBrowsers(db);bb.register(tools);const computers=new BrowserCapability(db,bb);
  t.after(async()=>{for(const c of db.list('alice','computer'))await bb.release('alice',c.id,'closed').catch(()=>{});db.close();shop.close();api.close();await stop(remote.proc);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});restore();});
  const searchHttp=(async()=>{await new Promise(r=>setTimeout(r,30));return json({answer:'1/2 in. drywall is about $15 a sheet.',results:[{title:'Drywall 1/2 in. 4x8',url:`${shop.url}/drywall`,content:'$14.98 each'}]});}) as typeof fetch;
- const head=new HeadStart(db,bb,searchHttp);let started=0;
+ const head=new HeadStart(db,bb,searchHttp);let started=0,reopened:any,accountAsk:any;
  const q=new RunQueue(db,async(owner,run,signal)=>{await head.ready(run.id);started=Date.now();const latest=db.get(owner,'run',run.id)!;
   // The employee reads the page the head start opened, without opening a browser of its own.
+  // Asking for the browser the head start already opened changes nothing, so it needs no approval card.
+  const again=await tools.invoke(owner,run.id,'browser_open',{purpose:'Drywall'},'open-1');reopened=again;
+  accountAsk=await tools.invoke(owner,run.id,'browser_open',{purpose:'Pro pricing',session:'account'},'open-2');
   const page=await tools.wait(owner,run.id,'browser_read',{},'read-1',signal);return {result:`${employeeContext(db,owner,latest).includes('do not call browser_open')?'reused':'not told'} | ${page.text.match(/\$[^\n]*stock/)?.[0]}`};});
  q.onCreated=(owner,run)=>head.begin(owner,run);
  const t0=Date.now();const run=q.create('alice',{task:'Find prices for 1/2 inch drywall',context:{source:'phone'}},'k1');
@@ -95,6 +98,8 @@ test('a web task gets its live browser and a quick search at once, before the em
  assert.deepEqual(done.progress.map((p:any)=>p.text.replace(/[\d.]+s$/,'Ns')),['Checking stores and prices','Opening a live browser…','Found 1 source in Ns',`Opening 127.0.0.1…`,'Reading 127.0.0.1']);
  assert.match(done.result,/^reused \| \$14\.98 each, 212 in stock$/);
  assert.equal(api.created.length,1,'one browser for the task, shared by the head start and the employee');
+ assert.equal(reopened.status,'open');assert.ok(!reopened.approvalId,'no approval card for the browser already open');
+ assert.ok(accountAsk.approvalId,'asking for the signed-in browser instead is a new request and still asks');
  assert.ok(db.list('alice','artifact').some(a=>a.kind==='search_results'));
  await computers.cleanup();assert.ok(db.list('alice','computer')[0]!.lingerUntil,'kept open after the answer');assert.equal(api.released.length,0);
 });

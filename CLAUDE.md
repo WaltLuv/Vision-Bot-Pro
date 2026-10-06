@@ -38,3 +38,7 @@ The launch must support Home Depot, Lowe's, Amazon, Walmart, configurable local 
 ## Field workflows scope
 
 In scope (see `docs/IMPLEMENTATION-PLAN.md` and `docs/FIELD-WORKFLOWS.md`): Jev-driven Browserbase automation through the governed `browser_do` tool; guest (ZIP-targeted) and authenticated (encrypted cookies on `/data`, Pro Xtra and Lowe's Pro pricing, cart staging) browser sessions; part identification, parametric SKU matching and aisle and bay routing; Hermes in the Fly.io image on a `shared-cpu-2x` machine with a 5 GB `/data` volume; LiveKit Cloud with the owner's credentials; Gemini structural anomaly detection on camera frames. Checkout, sending and deleting stay approval-gated in every one of them, and jev-browser is never exposed as its own MCP server.
+
+## Operator handoff
+
+What is left needs live accounts and the open internet: follow `docs/HERMES-AGENT-HANDOFF.md` in order, starting with rotating the two keys that were pasted into chat, then `cd gateway && npm run live-check`.
