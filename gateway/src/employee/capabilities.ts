@@ -1,4 +1,4 @@
-import {z} from 'zod';import {Store,type Row} from './db.js';import {ToolGateway} from './tools.js';import {extractAttachment} from './artifacts.js';
+import {z} from 'zod';import {Store,type Row} from './db.js';import {ToolGateway} from './tools.js';import {extractAttachment} from './artifacts.js';import {HeadStart} from './headstart.js';
 export const memorySchema=z.object({kind:z.enum(['profile','work','note','workspace']),text:z.string().min(1).max(4000),workspace:z.string().max(100).optional()});
 const skills=[
  ['general','General','Research and complete personal or work tasks. Verify sources and actions. Ask for missing requirements.'],
@@ -15,7 +15,8 @@ Enabled skills: ${enabled.map(s=>s.instructions).join('\n')}
 Relevant selected memory: ${JSON.stringify(memories.map(m=>({kind:m.kind,text:m.text})))}
 Selected attachment IDs (authorized by this task): ${(run.context?.attachments??[]).join(',')}
 Visual description: ${run.context?.visualDescription??''}
-Previously completed actions on this same task (do not repeat): ${JSON.stringify(completed).slice(0,12000)}`;}
+Previously completed actions on this same task (do not repeat): ${JSON.stringify(completed).slice(0,12000)}
+${HeadStart.context(run)}`;}
 export function registerLocalTools(t:ToolGateway,db:Store){
  t.register({id:'memory_recall',description:'Find relevant saved memory',effect:'read',schema:z.object({query:z.string().min(2).max(200),workspace:z.string().optional()}),run:async(a,c)=>db.list(c.owner,'memory').filter(m=>(!m.workspace||m.workspace===a.workspace)&&m.text.toLowerCase().includes(a.query.toLowerCase())).slice(0,10)});
  t.register({id:'memory_save',description:'Remember selected information',effect:'write',schema:memorySchema,run:async(a,c)=>db.create(c.owner,'memory',{...a,runId:c.runId})});

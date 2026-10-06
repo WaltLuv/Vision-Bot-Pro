@@ -29,7 +29,7 @@ try {
   browser = await launchBrowser({livePort: stack.browserUse.livePort});
 
   phone = await openPhone(browser, stack.base);
-  const ctx = {...phone, browser, base: stack.base, check, token: TOKEN, otherToken: OTHER_TOKEN, browserUse: stack.browserUse, browserbase: stack.browserbase};
+  const ctx = {...phone, browser, base: stack.base, check, token: TOKEN, otherToken: OTHER_TOKEN, browserUse: stack.browserUse, browserbase: stack.browserbase, searchApi: stack.searchApi};
 
   // Order matters: each scenario builds on the sign-in and the records the
   // previous ones created, and `safety` signs out at the end.
@@ -45,6 +45,7 @@ try {
   await scenario.approvalGate(ctx);
   await scenario.liveBrowser(ctx);
   await scenario.drivenBrowser(ctx);
+  await scenario.headStart(ctx);
   await scenario.cancellation(ctx);
   await scenario.survivesDisconnect(ctx);
   await scenario.ownershipIsolation(ctx);

@@ -14,7 +14,7 @@ import {employee} from './ui/employee';
 import {settings} from './ui/settings';
 import {routines} from './ui/routines';
 import {appNeededBanner} from './ui/connectors';
-import {updateLive, watchBrowser} from './ui/live';
+import {autoWatch, updateLive, watchBrowser} from './ui/live';
 
 const root = document.getElementById('app')!;
 trackEdits(root);
@@ -87,6 +87,7 @@ function shell(): HTMLElement {
 
 function render() {
   rebuildKeepingEdits(root, ctx.tab, () => mount(root, shell()));
+  autoWatch(ctx);
   updateLive(ctx);
 }
 

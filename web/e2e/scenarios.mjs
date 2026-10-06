@@ -482,7 +482,41 @@ export async function drivenBrowser({page, check, browserbase}) {
   const done = await state(page);
   check('every step it took is on the record', ['browser_open', 'browser_goto', 'browser_read'].every(n => done?.action.some(a => a.name === n && a.status === 'completed')));
   check('and the answer came from the page it read', done?.run.find(r => /Surf/.test(r.task))?.result?.includes('3 in stock'));
-  await waitFor(async () => browserbase.released.length > 0, 'the browser to be released', 15000, 300);
-  check('the browser is released as soon as the task is done', true);
+  // A finished task's browser stays open a little while to look at (4 seconds here), then is released.
+  await waitFor(async () => (await state(page))?.computer.some(c => c.lingerUntil && c.status === 'working'), 'the browser to be kept open after the task', 15000, 300);
+  check('after the task the browser stays open to look at', true);
+  await waitFor(async () => !(await state(page))?.computer.some(c => c.status === 'working'), 'the browser to be released', 20000, 300);
+  check('then it is released', browserbase.released.length > 0);
   if (await page.locator('.live').isVisible()) await page.locator('.live').getByRole('button', {name: '← Back', exact: true}).click();
+}
+
+/**
+ * The head start: a shopping question gets a live browser and a quick search the moment it is sent, before the
+ * employee's runtime has decided anything, and the browser opens on screen by itself.
+ */
+export async function headStart({page, check, searchApi}) {
+  await page.evaluate(() => localStorage.setItem('vb.autoWatch', 'on'));
+  await tab(page, 'Today').click();
+  const before = (await state(page))?.computer.length ?? 0;
+  await page.locator('textarea[aria-label="Ask or assign something"]').fill('Check the price of the Moen 1222 cartridge');
+  const sent = Date.now();
+  await page.locator('button:has-text("Send")').click();
+  await waitFor(async () => ((await state(page))?.computer.length ?? 0) > before, 'the live browser to start', 10000, 100);
+  const startMs = Date.now() - sent;
+  check(`the live browser starts at once, without waiting for the employee (${startMs} ms)`, startMs < 3000);
+  check('it needed no approval: it only reads', !(await state(page))?.approval.some(a => a.status === 'pending' && a.tool === 'browser_open'));
+  await waitFor(async () => await page.locator('.live').isVisible(), 'the browser to open on screen by itself', 20000, 200);
+  check('the browser opens on screen by itself', /view\?session=bb/.test(await page.locator('.live-frame').getAttribute('src') ?? ''));
+  check('the quick search ran on what was asked', searchApi.queries.some(q => /moen 1222 cartridge/i.test(q)), JSON.stringify(searchApi.queries));
+  await waitFor(async () => /Reading 127\.0\.0\.1/.test(await page.locator('.live-status').textContent()), 'the live view to say what it is doing', 20000, 200);
+  check('the live view says what the employee is doing', true);
+  await page.locator('.live').getByRole('button', {name: '← Back', exact: true}).click();
+  const run = (await state(page))?.run.find(r => /Moen 1222 cartridge/.test(r.task));
+  check('early findings land before the answer', run?.preview === 'The Moen 1222 cartridge is about $28.98.', run?.preview);
+  check('each step is on the task', ['Checking stores and prices', 'Opening a live browser…'].every(t => run?.progress?.some(p => p.text === t)), JSON.stringify(run?.progress?.map(p => p.text)));
+  const shot = await page.locator('.screen').innerText();
+  check('Today shows the steps', /Checking stores and prices/.test(shot));
+  await waitFor(async () => (await state(page))?.run.find(r => r.id === run.id)?.status === 'completed', 'the task to finish', 90000, 500);
+  check('the task finishes as before', true);
+  await page.evaluate(() => localStorage.setItem('vb.autoWatch', 'off'));
 }

@@ -145,7 +145,7 @@ test('the employee drives a Browserbase browser step by step, and never spends o
  assert.equal(everything.includes(KEY),false,'the API key is in no receipt, action or event');
 });
 
-test('a finished task releases its browser, and nothing opens without a key',{skip,timeout:120000},async t=>{
+test('a finished task keeps its browser open briefly to watch, then releases it, and nothing opens without a key',{skip,timeout:120000},async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'vc-bb-')),remote=await chromium(dir),api=await browserbaseApi(remote.ws);
  const saved={key:process.env.BROWSERBASE_API_KEY,base:process.env.BROWSERBASE_API_BASE};process.env.BROWSERBASE_API_KEY=KEY;process.env.BROWSERBASE_API_BASE=api.url;
  const db=new Store(':memory:'),tools=new ToolGateway(db),bb=new BrowserbaseBrowsers(db),computers=new BrowserCapability(db,bb);bb.register(tools);
@@ -155,7 +155,10 @@ test('a finished task releases its browser, and nothing opens without a key',{sk
  const opened=await tools.wait('alice',run.id,'browser_open',{purpose:'Look something up'},'k1',AbortSignal.timeout(60000));
  db.put('alice','run',{...db.get('alice','run',run.id)!,status:'completed'});
  await computers.cleanup();
- assert.deepEqual(api.released.map(r=>r.id),['bb-1'],'the session is ended as soon as its task is');
+ assert.equal(api.released.length,0,'kept open for the owner to see where it ended');
+ const lingering=db.get('alice','computer',opened.computerId)!;assert.equal(lingering.status,'working');assert.ok(lingering.lingerUntil>Date.now());
+ await computers.cleanup(lingering.lingerUntil+1);
+ assert.deepEqual(api.released.map(r=>r.id),['bb-1'],'and ended once the few minutes are up');
  assert.equal(db.get('alice','computer',opened.computerId)?.status,'closed');
  delete process.env.BROWSERBASE_API_KEY;
  db.put('alice','run',{id:'run-3',task:'Again',status:'working'});

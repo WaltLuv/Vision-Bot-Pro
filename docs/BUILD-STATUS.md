@@ -136,6 +136,17 @@ tests. None has run against a live account in this repository.
 | The Home Depot, Lowe's, Amazon, Walmart without a partner connection | Web search (Google through Gemini) | IMPLEMENTED + VERIFIED against fixtures and in the lab — a price is kept only when Google ties it to a product page on the store's own site; labelled Web search, stock unconfirmed, never quoted or bought here; live Gemini BLOCKED ON OWNER CREDENTIAL (top-up) |
 | Any website, read in a browser | Browserbase browser + `offer_record` | IMPLEMENTED + VERIFIED against fixtures — the employee reads a price on a supplier's site and records it; it joins the comparison marked as read from a website and unverified, and checkout refuses it (no supplier connection can quote an exact total), so the owner buys it on the site. Stagehand is not used: the employee drives the browser through the gateway's own governed step tools |
 
+### Fast web tasks (head start)
+
+| Capability | Status |
+|---|---|
+| Rule router (quick answer, search, website, shopping, connected app, approval) in under a millisecond | IMPLEMENTED + VERIFIED |
+| Jev routing for tasks the rules only guess at, with a time limit and fallback | IMPLEMENTED + VERIFIED against a stand-in; live Jev BLOCKED ON OWNER CREDENTIAL (`TYPESAFE_API_KEY`) |
+| Live Browserbase browser opened at once for web tasks, before the runtime; shared with the employee; opens on screen by itself | IMPLEMENTED + VERIFIED against a real Chromium and in the end-to-end suite (browser record in 85 ms); live Browserbase BLOCKED ON OWNER CREDENTIAL |
+| Quick search in parallel (Tavily, Serper, Exa, Brave, Gemini), early findings and steps on the task as they happen | IMPLEMENTED + VERIFIED against fixtures and end to end; live search BLOCKED ON OWNER CREDENTIAL (`SEARCH_API_KEY`) |
+| Guest browser by default; the owner's saved sign-ins (Browserbase context) only for tasks about their own accounts, and only with standing browser permission | IMPLEMENTED + VERIFIED against a stand-in |
+| A finished task's browser stays open a few minutes, then closes; a stopped task's closes at once | IMPLEMENTED + VERIFIED |
+
 ### Connected apps and routines
 
 | Capability | Status |

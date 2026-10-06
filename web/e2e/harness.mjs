@@ -92,6 +92,27 @@ function startBrowserUseFixture(dataDir) {
  * actually drives, step by step. Its live view is the same https page on the
  * allowed live-view host as above. A small shop site gives it somewhere to go.
  */
+/**
+ * A search API, answering like Tavily: an early answer and one source. The source is a page of its own, not the
+ * hardware shop, so a head start that opens it never counts as a visit to the shop.
+ */
+function startSearchFixture() {
+  const queries = [];
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const c of req) raw += c;
+    if (req.url === '/search') {
+      queries.push(JSON.parse(raw || '{}').query);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({answer: 'The Moen 1222 cartridge is about $28.98.', results: [{title: 'Moen 1222 cartridge', url: `http://127.0.0.1:${server.address().port}/moen-1222`, content: '$28.98, in stock'}]}));
+      return;
+    }
+    res.setHeader('Content-Type', 'text/html');
+    res.end('<!doctype html><title>Moen 1222 cartridge</title><h1>Moen 1222 cartridge</h1><p>$28.98, in stock</p>');
+  });
+  server.listen(0, '127.0.0.1');
+  return new Promise(resolve => server.on('listening', () => resolve({server, queries, port: server.address().port})));
+}
+
 function startBrowserbaseFixture() {
   const chromium = spawn(process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium',
     ['--headless=new', '--no-sandbox', '--no-proxy-server', '--remote-debugging-port=0', `--user-data-dir=${mkdtempSync(path.join(tmpdir(), 'vc-e2e-remote-'))}`, 'about:blank'],
@@ -171,6 +192,7 @@ export async function startStack({port, tokens}) {
   const supplier = await startSupplierFixture();
   const browserUse = await startBrowserUseFixture(dataDir);
   const browserbase = await startBrowserbaseFixture();
+  const searchApi = await startSearchFixture();
   // The model stand-in runs in this process and needs to know where the shop is.
   process.env.E2E_SHOP_URL = browserbase.shopUrl;
   const supplierConfig = path.join(dataDir, 'suppliers.json');
@@ -214,6 +236,11 @@ export async function startStack({port, tokens}) {
       BROWSER_POLL_MS: '300',
       BROWSERBASE_API_KEY: 'fixture-only',
       BROWSERBASE_API_BASE: `http://127.0.0.1:${browserbase.apiPort}`,
+      SEARCH_API_KEY: 'fixture-only',
+      SEARCH_PROVIDER: 'tavily',
+      SEARCH_ENDPOINT: `http://127.0.0.1:${searchApi.port}/search`,
+      // Long enough to see, short enough to check that it does close.
+      BROWSER_LINGER_MS: '4000',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -228,6 +255,7 @@ export async function startStack({port, tokens}) {
     base,
     browserUse,
     browserbase,
+    searchApi,
     tail: (lines = 6) => log.split('\n').slice(-lines).join('\n'),
     async stop() {
       gateway.kill('SIGKILL');
@@ -238,6 +266,7 @@ export async function startStack({port, tokens}) {
       browserbase.api.close();
       browserbase.shop.close();
       browserbase.chromium.kill('SIGKILL');
+      searchApi.server.close();
       rmSync(dataDir, {recursive: true, force: true});
     },
   };
@@ -269,6 +298,8 @@ const PHONE = {
 
 export async function openPhone(browser, base) {
   const context = await browser.newContext(PHONE);
+  // The browser opening by itself is checked by its own scenario; the others test other things and would find it covering the screen.
+  await context.addInitScript(() => {try {if (!localStorage.getItem('vb.autoWatch')) localStorage.setItem('vb.autoWatch', 'off');} catch {}});
   const page = await context.newPage();
   const cspViolations = [];
   const pageErrors = [];

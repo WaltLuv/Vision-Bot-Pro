@@ -88,6 +88,12 @@ cannot work.
   repository; see `docs/COMPOSIO.md`.
 - **Phone calls**: Retell `RETELL_API_KEY`, `RETELL_FROM`, `RETELL_AGENT_ID`,
   with its webhook pointed at `${PUBLIC_BASE_URL}/webhooks/voice`.
+- **Fast web tasks**: set `SEARCH_API_KEY` with `SEARCH_PROVIDER` (`tavily`,
+  `serper`, `exa` or `brave`). This is what makes early findings appear in
+  seconds; without it the head start still opens the live browser, but has no
+  quick search. Browserbase (`BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`) is
+  the live browser. Optional: `TYPESAFE_API_KEY` for Jev routing (see
+  `docs/FAST-WEB.md`).
 - **Web search**: a Gemini key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) is
   enough: the employee searches Google through Gemini and gets the pages behind
   each answer. Or `SEARCH_API_KEY` (Brave Search by default; `SEARCH_ENDPOINT`

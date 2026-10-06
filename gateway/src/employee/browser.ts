@@ -24,12 +24,14 @@ export function browserClock(r:Row,begun:number,now=Date.now()):string|null{cons
 
 async function providerPost(path:string){const r=await fetch(`${browserUseBase()}${path}`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{'X-Browser-Use-API-Key':process.env.BROWSER_USE_API_KEY??''}});if(!r.ok)throw Error(`Browser service returned HTTP ${r.status}`);}
 
-/** Wait for a free browser slot. Every provider shares COMPUTER_CAPACITY, first come first served. */
+/** Wait for a free browser slot. Every provider shares COMPUTER_CAPACITY, first come first served. A task's own
+ * open browser (its head start) never blocks its next one, and one kept open after its task never blocks anyone. */
 export async function waitForBrowserSlot(db:Store,ticket:Row,assertAuthorized:()=>void,deadline=Date.now()+RUN_BUDGET){
- while(db.all('computer').filter(x=>['starting','working','cleanup_pending'].includes(x.data.status)).length>=Number(process.env.COMPUTER_CAPACITY??1)||db.all('computer').some(x=>x.data.status==='queued'&&x.data.createdAt<ticket.createdAt)){assertAuthorized();if(Date.now()>deadline)throw Error('Browser queue wait expired');await new Promise(r=>setTimeout(r,750));}
+ while(db.all('computer').filter(x=>['starting','working','cleanup_pending'].includes(x.data.status)&&!x.data.lingerUntil&&x.data.runId!==ticket.runId).length>=Number(process.env.COMPUTER_CAPACITY??1)||db.all('computer').some(x=>x.data.status==='queued'&&x.data.createdAt<ticket.createdAt)){assertAuthorized();if(Date.now()>deadline)throw Error('Browser queue wait expired');await new Promise(r=>setTimeout(r,750));}
 }
 /** A browser provider the employee drives itself; ending one of its sessions is provider business. */
 export interface DrivenBrowsers{release(owner:string,computerId:string,status:'closed'|'cancelled'):Promise<void>}
+const LINGER_DEFAULT=180_000;
 
 export class BrowserCapability{
  constructor(readonly db:Store,readonly driven?:DrivenBrowsers){}
@@ -123,7 +125,22 @@ export class BrowserCapability{
   this.db.put(owner,'computer',{...latest,liveUrl:url,liveEmbed:embeddableLiveUrl(url),liveHost:host,liveFrom:runId});this.db.event(owner,'computer.updated',{runId:latest.runId,computerId:latest.id});
  }
  register(t:ToolGateway){t.register({id:'browser_work',title:'Let a browser do this web task',description:'Use a fresh browser for this specific web task',effect:'computer',schema:z.object({task:z.string().min(1).max(8000)}),run:async(a,c)=>this.execute(a.task,c)});}
- async cleanup(){for(const {owner,data:r} of this.db.all('computer'))if(!closed.includes(r.status)&&terminal.has(this.db.get(owner,'run',r.runId)?.status)){if(r.provider==='browserbase'&&this.driven)await this.driven.release(owner,r.id,'closed');else await this.cancel(owner,r.id);}}
+ /**
+  * Browsers whose task is over. A Browserbase browser whose task finished stays open for a few minutes
+  * (BROWSER_LINGER_MS), so the owner sees where it ended and can take over; then it closes. A stopped or failed
+  * task's browser closes at once, and so does one still queued or starting, which never showed anything.
+  */
+ async cleanup(now=Date.now()){for(const {owner,data:r} of this.db.all('computer')){
+  const run=this.db.get(owner,'run',r.runId);if(closed.includes(r.status)||!terminal.has(run?.status))continue;
+  if(r.provider==='browserbase'&&this.driven){
+   const linger=Number(process.env.BROWSER_LINGER_MS??LINGER_DEFAULT);
+   if(run!.status==='completed'&&r.status==='working'&&linger>0){
+    if(!r.lingerUntil){this.db.put(owner,'computer',{...r,lingerUntil:now+linger});this.db.event(owner,'computer.updated',{runId:r.runId,computerId:r.id});continue;}
+    if(r.lingerUntil>now)continue;
+   }
+   await this.driven.release(owner,r.id,'closed');
+  }else await this.cancel(owner,r.id);
+ }}
  /**
   * After a restart nothing drives or watches a browser that was open, so none can be kept. Left alone, one
   * stale record holds the only slot, and an old queued one holds up every browser request behind it. Each is

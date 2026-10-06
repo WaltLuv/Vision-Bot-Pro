@@ -151,3 +151,20 @@ a.ghost { border-color: var(--line); }
 .row-item.app-row .row, .row-item.idea .note { flex-basis: 100%; }
 .avatars .avatar { min-width: 44px; min-height: 44px; font-size: 1.2rem; padding: 0; }
 .avatars .avatar.on { border-color: var(--accent); background: var(--panel); }
+
+/* What the employee is doing as it happens: steps, early findings, the live browser. */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.steps li { position: relative; padding-left: 22px; font-size: .9rem; color: var(--muted); }
+.steps li::before { content: '✓'; position: absolute; left: 0; color: var(--ok); }
+.steps li.now { color: var(--ink); font-weight: 600; }
+.steps li.now::before { content: ''; top: .35em; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.findings { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.sources { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scroll-snap-type: x mandatory; }
+.source { flex: 0 0 min(70%, 220px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: .86rem; min-width: 0; }
+.source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-host { color: var(--muted); font-size: .76rem; }
+.live-card.active { border-color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .steps li.now::before { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+}

@@ -12,7 +12,11 @@ export type RunStatus = 'queued' | 'working' | 'verifying' | 'completed' | 'fail
 export type Source = 'phone' | 'glasses' | 'text' | 'workflow' | 'webhook';
 
 export interface Row {id: string; [key: string]: any}
-export interface Run extends Row {task: string; title?: string; status: RunStatus; result?: string; error?: string; recovered?: boolean; conversationId?: string; createdAt?: string; completedAt?: string; context?: {source?: Source; attachments?: string[]; visualDescription?: string}}
+export interface RouteInfo {route: 'quick_answer' | 'search_then_answer' | 'visible_browser' | 'procurement_browser' | 'connected_app' | 'approval_action'; needsVisibleBrowser: boolean; session: 'guest' | 'account'; source: 'rules' | 'jev'}
+export interface Source_ {title: string; url: string; snippet: string}
+/** The head start's work on a task, as it lands: each step, the quick search's sources, and an early answer. */
+export interface Progress {route?: RouteInfo; progress?: {at: string; text: string}[]; preview?: string; findings?: {provider: string; query: string; sources: Source_[]; ms: number}; browserAt?: string}
+export interface Run extends Row, Progress {task: string; title?: string; status: RunStatus; result?: string; error?: string; recovered?: boolean; conversationId?: string; createdAt?: string; completedAt?: string; context?: {source?: Source; attachments?: string[]; visualDescription?: string}}
 export interface Approval extends Row {runId: string; tool: string; label: string; effect: Effect; details: Record<string, unknown>; status: 'pending' | 'approved' | 'denied'; expiresAt: number}
 export interface Artifact extends Row {runId?: string; kind: string; name: string; mime?: string; text?: string}
 export interface Agent extends Row {name: string; title: string; instructions: string; runtime: 'hermes' | 'anthropic' | 'claude'; skills: string[]; avatar?: string; provider?: string; model?: string}
@@ -31,7 +35,7 @@ export type AppStatus = 'not_connected' | 'pending' | 'connected' | 'failed' | '
 export interface AppConnection {id: string; name: string; category: string; description: string; status: AppStatus; connectedLabel: string | null; connectedEmail: string | null; lastCheckedAt: string | null}
 export interface Action extends Row {runId: string; name: string; status: string; effect: Effect}
 /** A browser the employee is using. liveEmbed is the provider's live view, present only while it runs and only from an allowed host. */
-export interface Computer extends Row {runId: string; task: string; status: 'queued' | 'starting' | 'working' | 'completed' | 'failed' | 'cancelled' | 'closed' | 'cleanup_pending'; control?: 'agent' | 'owner'; liveEmbed?: string | null; liveHost?: string}
+export interface Computer extends Row {runId: string; task: string; lingerUntil?: number; session?: 'guest' | 'account'; status: 'queued' | 'starting' | 'working' | 'completed' | 'failed' | 'cancelled' | 'closed' | 'cleanup_pending'; control?: 'agent' | 'owner'; liveEmbed?: string | null; liveHost?: string}
 
 export type AccessMethod = 'official_api' | 'partner_api' | 'mcp' | 'browser' | 'manual' | 'web_search';
 export type SupplierStatus = 'ok' | 'failed' | 'unconfigured' | 'timeout';
@@ -68,6 +72,8 @@ export interface Connections {
   products: boolean; browser: boolean; search?: boolean; suppliers: SupplierConnection[];
   /** Connected apps (Gmail, Slack, Calendar…) are set up on this server. */
   apps?: boolean;
+  /** Which search answers quick searches (tavily, serper, exa, brave, gemini), and what routes tasks. */
+  searchProvider?: string | null; router?: 'rules' | 'jev'; liveBrowser?: boolean;
   mcp: {id: string; tools: string[]}[]; mcpError?: string;
 }
 
@@ -169,6 +175,7 @@ export const api = {
 
 export type GatewayEvent =
   | {seq: number; type: 'run.updated'; runId: string; status: RunStatus; at: string}
+  | {seq: number; type: 'run.progress'; runId: string; text: string; at: string}
   | {seq: number; type: 'approval.requested'; runId: string; approvalId: string; at: string}
   | {seq: number; type: 'approval.decided'; runId: string; approvalId: string; decision: string; at: string}
   | {seq: number; type: 'tool.started' | 'tool.completed' | 'tool.failed' | 'tool.permission'; runId: string; at: string; [k: string]: any}

@@ -88,7 +88,7 @@ async function readPage(raw: string, http: typeof fetch): Promise<{url: string; 
   return {url: response.url || url.toString(), title, text: raw_text.slice(0, MAX_TEXT), truncated: raw_text.length > MAX_TEXT};
 }
 
-type SearchResult = {results: {title: string; url: string; snippet: string}[]; provider: string; answer?: string; searches?: string[]};
+export type SearchResult = {results: {title: string; url: string; snippet: string}[]; provider: string; answer?: string; searches?: string[]};
 
 /** How the employee searches: a search API when its key is set, else Google through a Gemini key, else not at all. */
 export function searchProvider(env: NodeJS.ProcessEnv = process.env): 'api' | 'gemini' | null {
@@ -96,27 +96,54 @@ export function searchProvider(env: NodeJS.ProcessEnv = process.env): 'api' | 'g
 }
 
 /**
+ * The search API a SEARCH_API_KEY belongs to. Each speaks its own request shape, so the key alone is not enough:
+ * SEARCH_PROVIDER names it (brave, tavily, serper or exa), and without it the endpoint's host decides, then Brave.
+ */
+export type SearchApi = 'brave' | 'tavily' | 'serper' | 'exa';
+export function searchApi(env: NodeJS.ProcessEnv = process.env): SearchApi {
+  const named = String(env.SEARCH_PROVIDER ?? '').toLowerCase();
+  if (named === 'tavily' || named === 'serper' || named === 'exa' || named === 'brave') return named;
+  const host = env.SEARCH_ENDPOINT ? new URL(env.SEARCH_ENDPOINT).hostname : '';
+  return host.includes('tavily') ? 'tavily' : host.includes('serper') ? 'serper' : host.includes('exa.ai') ? 'exa' : 'brave';
+}
+const SEARCH_ENDPOINTS: Record<SearchApi, string> = {
+  brave: 'https://api.search.brave.com/res/v1/web/search',
+  tavily: 'https://api.tavily.com/search',
+  serper: 'https://google.serper.dev/search',
+  exa: 'https://api.exa.ai/search',
+};
+/** The request each search API expects. The key travels in a header, never in the address, so it stays out of logs. */
+function searchRequest(api: SearchApi, endpoint: string, key: string, query: string): [string, RequestInit] {
+  const json = (headers: Record<string, string>, body: unknown): [string, RequestInit] => [endpoint, {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json', ...headers}, body: JSON.stringify(body)}];
+  if (api === 'tavily') return json({Authorization: `Bearer ${key}`}, {query, max_results: 8, search_depth: 'basic', include_answer: true});
+  if (api === 'serper') return json({'X-API-KEY': key}, {q: query, num: 8});
+  if (api === 'exa') return json({'x-api-key': key}, {query, numResults: 8, type: 'auto', contents: {highlights: true}});
+  return [`${endpoint}${endpoint.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}`, {headers: {Accept: 'application/json', 'X-Subscription-Token': key}}];
+}
+
+/**
  * Search, when a provider is configured. Deliberately provider-neutral: the
  * endpoint and key are configuration, so nobody is locked to one search
  * company, and with none set the tool says so instead of inventing results.
  */
-async function search(query: string, http: typeof fetch): Promise<SearchResult> {
+export async function search(query: string, http: typeof fetch = fetch, timeoutMs = TIMEOUT_MS): Promise<SearchResult> {
   const provider = searchProvider();
   if (provider === 'gemini') return googleSearch(query, http);
   if (!provider) throw Error('Web search is not connected. Set SEARCH_API_KEY, or a Gemini key to search through Google, or give the employee a web address to read.');
-  const key = process.env.SEARCH_API_KEY!, endpoint = process.env.SEARCH_ENDPOINT ?? 'https://api.search.brave.com/res/v1/web/search';
-  const url = `${endpoint}${endpoint.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}`;
-  const response = await http(url, {signal: AbortSignal.timeout(TIMEOUT_MS), headers: {Accept: 'application/json', 'X-Subscription-Token': key, Authorization: `Bearer ${key}`}});
+  const key = process.env.SEARCH_API_KEY!, api = searchApi(), endpoint = process.env.SEARCH_ENDPOINT ?? SEARCH_ENDPOINTS[api];
+  const [url, init] = searchRequest(api, endpoint, key, query);
+  const response = await http(url, {...init, signal: AbortSignal.timeout(timeoutMs)});
   if (!response.ok) throw Error(`Search returned HTTP ${response.status}`);
   const body = await response.json() as any;
-  // Brave, Tavily and SerpAPI-shaped responses all surface a list of results.
-  const rows = body?.web?.results ?? body?.results ?? body?.organic_results ?? [];
+  // Brave (web.results), Tavily and Exa (results), Serper (organic) and SerpAPI (organic_results) all surface a list.
+  const rows = body?.web?.results ?? body?.results ?? body?.organic ?? body?.organic_results ?? [];
   return {
     provider: new URL(endpoint).hostname,
+    ...(typeof body?.answer === 'string' && body.answer ? {answer: body.answer.slice(0, 4000)} : {}),
     results: (rows as any[]).slice(0, 8).map(r => ({
       title: String(r.title ?? r.name ?? '').slice(0, 200),
       url: String(r.url ?? r.link ?? ''),
-      snippet: String(r.description ?? r.snippet ?? r.content ?? '').slice(0, 500),
+      snippet: String(r.description ?? r.snippet ?? r.content ?? (Array.isArray(r.highlights) ? r.highlights.join(' … ') : r.text) ?? '').slice(0, 500),
     })).filter(r => r.url),
   };
 }

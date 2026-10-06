@@ -6,6 +6,8 @@ export const terminal=new Set(['completed','failed','cancelled']);
 export type Executor=(owner:string,run:Row,signal:AbortSignal)=>Promise<{result:string;usage?:unknown}>;
 export class RunQueue {
  readonly active=new Map<string,AbortController>();
+ /** Called once for each new task, after it is saved and before it runs: the head start hangs off this. */
+ onCreated?:(owner:string,run:Row)=>void;
  constructor(readonly db:Store,readonly execute:Executor,readonly capacity=2){}
  create(owner:string,input:unknown,key:string){
   const parsed=executeSchema.parse(input);if(!key||key.length>200)throw Error('A request identifier is required');
@@ -14,7 +16,8 @@ export class RunQueue {
   if(parsed.context.agentId&&parsed.context.agentId!==agent?.id)throw Error('Employee not found');
   if(parsed.context.conversationId&&!this.db.get(owner,'conversation',parsed.context.conversationId))throw Error('Conversation not found');
   const hash=createHash('sha256').update(JSON.stringify(parsed)).digest('hex');
-  return this.db.transaction(()=>{
+  let created:Row|undefined;
+  const result=this.db.transaction(()=>{
    const prior=this.db.sql.prepare('SELECT hash,id FROM dedupe WHERE owner=? AND key=?').get(owner,key);
    if(prior){if(prior.hash!==hash)throw Error('Request identifier already used for different work');return this.db.get(owner,'run',String(prior.id))!;}
    const conversationId=parsed.context.conversationId??this.db.create(owner,'conversation',{title:(parsed.title??parsed.task).slice(0,80)}).id;
@@ -22,8 +25,10 @@ export class RunQueue {
    this.db.create(owner,'message',{conversationId,runId:run.id,role:'user',text:run.task});
    this.db.sql.prepare('INSERT INTO dedupe VALUES(?,?,?,?)').run(owner,key,hash,run.id);
    for(const id of parsed.context.attachments)this.db.create(owner,'evidence_link',{runId:run.id,artifactId:id});
-   this.db.event(owner,'run.updated',{runId:run.id,status:'queued'});return run;
+   this.db.event(owner,'run.updated',{runId:run.id,status:'queued'});created=run;return run;
   });
+  if(created)try{this.onCreated?.(owner,created);}catch{}
+  return result;
  }
  state(owner:string,id:string,status:string,extra:object={}){const run=this.db.get(owner,'run',id);if(!run||terminal.has(run.status))return;this.db.put(owner,'run',{...run,...extra,status});this.db.event(owner,'run.updated',{runId:id,status});}
  cancel(owner:string,id:string){if(!this.db.get(owner,'run',id))throw Error('Task not found');this.state(owner,id,'cancelled',{completedAt:new Date().toISOString()});this.active.get(id)?.abort();for(const a of this.db.list(owner,'approval',-1).filter(a=>a.runId===id&&a.status==='pending'))this.db.put(owner,'approval',{...a,status:'denied'});}

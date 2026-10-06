@@ -4,6 +4,7 @@ import {cameraMessage} from '../camera';
 import type {Card} from '../realtime';
 import {activeRun, isTerminal, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
 import {approvalCard} from './approvals';
+import {findings, liveBrowserCard, steps} from './progress';
 import {richText} from '../rich';
 import type {Ctx} from './ctx';
 import {Dictation, dictationMessage, dictationSupported} from '../voice';
@@ -146,7 +147,7 @@ export function today(ctx: Ctx): HTMLElement {
     ...approvals.map(a => approvalCard(a, () => void ctx.refresh(), m => ctx.toast(m), ctx.state.contact)),
     cameraSection(ctx, send),
     ...ctx.cards.map(cardView),
-    browsingCard(ctx),
+    liveBrowserCard(ctx),
     run ? runPanel(ctx, run) : null,
     transcriptPanel(ctx),
     h('section', {class: 'card'},
@@ -225,16 +226,6 @@ function voiceRow(ctx: Ctx, _send: (task: string) => Promise<void>): HTMLElement
 }
 
 /** While the employee is using a browser, one tap to watch it (and take it over). */
-function browsingCard(ctx: Ctx): HTMLElement | null {
-  const c = ctx.state.computer.find(x => x.status === 'starting' || x.status === 'working');
-  if (!c) return null;
-  const yours = c.control === 'owner';
-  return h('section', {class: 'card'},
-    h('p', {class: 'eyebrow', text: yours ? 'You have the browser' : 'Using the web'}),
-    h('h3', {text: c.task}),
-    h('button', {class: 'primary', onclick: () => ctx.watch(c.id)}, yours ? 'Back to the browser' : 'Watch it browse'));
-}
-
 function runPanel(ctx: Ctx, run: ReturnType<typeof activeRun> & {}): HTMLElement {
   const blocked = unreconciledActions(ctx.state.action, run.id);
   // The employee does one task at a time, so a new one waits for the one before it, which may be waiting for you.
@@ -243,6 +234,8 @@ function runPanel(ctx: Ctx, run: ReturnType<typeof activeRun> & {}): HTMLElement
   return h('section', {class: 'card'},
     h('p', {class: 'eyebrow', text: STATUS_LABEL[run.status]}),
     h('h3', {text: runTitle(run)}),
+    steps(run),
+    findings(run),
     ahead ? h('p', {class: 'note', text: waitingOnYou
       ? 'Starts once you answer the request above. Your employee does one task at a time.'
       : `Starts when "${runTitle(ahead)}" finishes. Your employee does one task at a time.`}) : null,

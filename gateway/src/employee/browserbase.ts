@@ -1,4 +1,4 @@
-import {chromium,type Browser,type Locator,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
+import {createHash} from 'node:crypto';import {chromium,type Browser,type Locator,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
 
 /**
  * Browserbase: a remote browser the employee drives itself, one step at a time.
@@ -46,9 +46,15 @@ async function onPage<T>(what:string,act:()=>Promise<T>):Promise<T>{
 }
 
 interface Open{browser:Browser;page:Page;computerId:string}
+/** How a browser starts: guest is a fresh browser with nothing of the owner's; account carries the owner's saved sign-ins. */
+export interface OpenOptions{session?:'guest'|'account'}
+// After a task is done its browser stays open this long, so the owner can see where it ended and take over.
+export const lingerMs=()=>Number(process.env.BROWSER_LINGER_MS??180_000);
 
 export class BrowserbaseBrowsers implements DrivenBrowsers{
  private open=new Map<string,Open>();
+ // One browser per task, even when the gateway's head start and the employee ask for it at the same moment.
+ private opening=new Map<string,Promise<any>>();
  constructor(readonly db:Store){}
  private key(c:{owner:string;runId:string}){return `${c.owner}\0${c.runId}`;}
  private async api(path:string,init:RequestInit={}){
@@ -96,14 +102,36 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
    description:'Close the open browser when the web part of the task is done',
    run:async(_a,c)=>{const o=this.open.get(this.key(c));if(o)await this.release(c.owner,o.computerId,'closed');return {status:'closed'};}});
  }
- private async openFor(c:ToolContext,purpose:string){
+ /** The browser open for a task, if any: its page, for the gateway's own first steps. */
+ page(owner:string,runId:string){return this.open.get(this.key({owner,runId}))?.page;}
+ /**
+  * The owner's own Browserbase context: cookies and sign-ins that persist between sessions, so a site they logged
+  * into once (in a browser they took over) stays logged in. Only an account session uses it; guest ones never see it.
+  */
+ private async context(owner:string){
+  const id=createHash('sha256').update('bb-context:'+owner).digest('hex'),known=this.db.get(owner,'browser_context',id);
+  if(known?.providerContextId)return String(known.providerContextId);
+  const created=await this.api('/v1/contexts',{method:'POST',body:JSON.stringify({...project()})});
+  this.db.put(owner,'browser_context',{id,provider:'browserbase',providerContextId:String(created.id),createdAt:new Date().toISOString()});
+  return String(created.id);
+ }
+ /** Close browsers kept open after their task, to free their slots for new work. */
+ async releaseLingering(){for(const {owner,data} of this.db.all('computer'))if(data.provider==='browserbase'&&data.lingerUntil&&!ended(data.status))await this.release(owner,data.id,'closed');}
+ async openFor(c:ToolContext,purpose:string,options:OpenOptions={}){
+  const key=this.key(c),existing=this.open.get(key);if(existing)return {computerId:existing.computerId,status:'open'};
+  const pending=this.opening.get(key);if(pending)return pending;
+  const p=this.start(c,purpose,options).finally(()=>this.opening.delete(key));this.opening.set(key,p);return p;
+ }
+ private async start(c:ToolContext,purpose:string,options:OpenOptions){
   if(!browserbaseEnabled())throw new Refused('The web browser is not connected');
-  const existing=this.open.get(this.key(c));if(existing)return {computerId:existing.computerId,status:'open'};
-  const ticket=this.db.create(c.owner,'computer',{runId:c.runId,status:'queued',task:purpose,provider:'browserbase',control:'agent'});
+  const ticket=this.db.create(c.owner,'computer',{runId:c.runId,status:'queued',task:purpose,provider:'browserbase',control:'agent',session:options.session??'guest'});
+  this.db.event(c.owner,'computer.updated',{runId:c.runId,computerId:ticket.id});
   try{
+   await this.releaseLingering();
    await waitForBrowserSlot(this.db,ticket,c.assertAuthorized);
-   c.assertAuthorized();this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,status:'starting'});
-   const session=await this.api('/v1/sessions',{method:'POST',body:JSON.stringify({...project(),api_timeout:SESSION_SECONDS})});
+   c.assertAuthorized();this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,status:'starting'});this.db.event(c.owner,'computer.updated',{runId:c.runId,computerId:ticket.id});
+   const saved=options.session==='account'?await this.context(c.owner):null;
+   const session=await this.api('/v1/sessions',{method:'POST',body:JSON.stringify({...project(),api_timeout:SESSION_SECONDS,...(saved?{browserSettings:{context:{id:saved,persist:true}}}:{})})});
    this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,providerId:String(session.id)});
    const live=await this.api(`/v1/sessions/${encodeURIComponent(session.id)}/debug?expiresIn=${SESSION_SECONDS}`);
    c.assertAuthorized();

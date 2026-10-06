@@ -95,6 +95,28 @@ async function stopIt(ctx: Ctx) {
   finally {busy = false; updateLive(ctx);}
 }
 
+/** The newest thing the employee said it is doing on this browser's task, such as "Opening homedepot.com…". */
+function latestStep(ctx: Ctx, c: Computer): string | undefined {
+  return ctx.state.run?.find(r => r.id === c.runId)?.progress?.at(-1)?.text;
+}
+
+/**
+ * Open the live view by itself the first time a browser for a task you just gave starts showing pages: the
+ * browser is the progress, so you should not have to go looking for it. Once per browser, and only for one that
+ * started in the last couple of minutes, so reopening the app does not throw you into an old one.
+ */
+const autoShown = new Set<string>();
+export function autoWatch(ctx: Ctx, now = Date.now()) {
+  if (watching || ctx.tab !== 'today' || !autoWatchOn()) return;
+  const c = ctx.state.computer.find(x => x.status === 'working' && x.liveEmbed && !x.lingerUntil && !autoShown.has(x.id) && now - Date.parse(String(x.createdAt ?? 0)) < 120_000);
+  if (!c) return;
+  autoShown.add(c.id);
+  watchBrowser(ctx, c.id);
+}
+const AUTO_KEY = 'vb.autoWatch';
+export function autoWatchOn(): boolean {try {return localStorage.getItem(AUTO_KEY) !== 'off';} catch {return true;}}
+export function setAutoWatch(on: boolean) {try {localStorage.setItem(AUTO_KEY, on ? 'on' : 'off');} catch {/* a private window keeps the default */}}
+
 /** Bring the screen in line with the latest state. Cheap and idempotent; called after every render. */
 export function updateLive(ctx: Ctx) {
   current = ctx;
@@ -113,6 +135,7 @@ export function updateLive(ctx: Ctx) {
   view.take.hidden = !src || yours;
   view.give.hidden = !yours;
   view.stop.hidden = !running;
+  view.stop.textContent = c?.lingerUntil ? 'Close browser' : 'Stop';
   for (const b of [view.take, view.give, view.stop]) b.disabled = busy;
 
   let status: string, message = '', note = '';
@@ -121,7 +144,8 @@ export function updateLive(ctx: Ctx) {
   else if (!working) {status = c.status === 'cleanup_pending' ? 'Stopping…' : 'Starting a browser…';}
   else if (yours) {status = "You're in control. Your employee is paused until you hand it back."; note = "Anything you type goes to that website. Hand back when you're done.";}
   else if (src && disconnected) {status = 'The live view lost its connection to the browser.'; note = 'The browser may have closed. Stop ends the whole task.';}
-  else if (src) {status = 'Your employee is browsing. Tap Take over to use it yourself.'; note = 'Stop ends the whole task.';}
+  else if (src && c.lingerUntil) {status = 'Task finished. The browser stays open a few minutes: look around or take over.'; note = 'Close browser ends it now.';}
+  else if (src) {const step = latestStep(ctx, c); status = step ? `Your employee is browsing: ${step}` : 'Your employee is browsing. Tap Take over to use it yourself.'; note = step ? 'Tap Take over to use it yourself. Stop ends the whole task.' : 'Stop ends the whole task.';}
   else if (c.liveHost) {status = 'Your employee is browsing.'; message = `Its live view comes from ${c.liveHost}, which this app is not set up to show.`; note = 'Whoever runs your server can allow it with BROWSER_LIVE_VIEW_HOSTS.';}
   else {status = 'Your employee is browsing.'; message = 'Waiting for the live view…';}
   view.status.textContent = status;

@@ -3,6 +3,7 @@ import {h} from '../dom';
 import {ACCESS_METHOD_LABEL} from '../store';
 import type {Ctx} from './ctx';
 import {connectorsCard} from './connectors';
+import {autoWatchOn, setAutoWatch} from './live';
 
 /**
  * Suppliers are a list, not a single on/off capability. Which ones are
@@ -78,6 +79,7 @@ export function settings(ctx: Ctx): HTMLElement {
       // not something the person did, so it is phrased that way.
       c?.mcpError ? h('p', {class: 'note', text: 'Some connected tools are misconfigured on the server.'}) : null,
     ),
+    speedCard(ctx),
     connectorsCard(ctx),
     suppliersCard(ctx),
     h('section', {class: 'card'},
@@ -88,6 +90,24 @@ export function settings(ctx: Ctx): HTMLElement {
       ),
       h('p', {class: 'note', text: 'Deleting removes your tasks, files, memory and conversations from the server and signs you out on every device. It cannot be undone.'}),
     ),
+  );
+}
+
+const SEARCH_NAME: Record<string, string> = {tavily: 'Tavily', serper: 'Serper (Google results)', exa: 'Exa', brave: 'Brave Search', gemini: 'Google, through Gemini'};
+/** What makes web tasks fast: a quick search, a live browser that opens at once, and how tasks are routed. */
+function speedCard(ctx: Ctx): HTMLElement {
+  const c = ctx.connections;
+  const box = h('input', {type: 'checkbox', id: 'auto-watch'});
+  box.checked = autoWatchOn();
+  box.addEventListener('change', () => setAutoWatch(box.checked));
+  const row = (label: string, ok: boolean, okText: string, blurb: string) => h('div', {class: 'row-item'},
+    h('p', {class: 'task', text: label}), h('span', {class: `pill ${ok ? 'ok' : 'warn'}`, text: ok ? okText : 'Not set up'}), h('p', {class: 'note', text: blurb}));
+  return h('section', {class: 'card'},
+    h('h3', {text: 'Web tasks'}),
+    row('Quick search', !!c?.searchProvider, SEARCH_NAME[c?.searchProvider ?? ''] ?? 'Ready', 'Runs the moment you ask, so early findings show in seconds. A search API key (Tavily, Serper, Exa or Brave) is fastest.'),
+    row('Live browser', !!c?.liveBrowser, 'Ready', 'Opens as soon as a task needs the web, so you can watch every step and take over.'),
+    row('Fast routing', !!c, c?.router === 'jev' ? 'Rules + Jev' : 'Rules', 'Decides in a moment whether a task needs the web, a store, your apps or your approval.'),
+    h('label', {class: 'check', for: 'auto-watch'}, box, h('span', {}, h('span', {class: 'title', text: 'Show the browser as soon as it opens'}), h('span', {class: 'sub', text: 'On this phone. Off: tap Watch it browse when you want to see it.'}))),
   );
 }
 
