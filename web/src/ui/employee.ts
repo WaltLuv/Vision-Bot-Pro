@@ -12,6 +12,7 @@ export function employee(ctx: Ctx): HTMLElement {
 
   const name = h('input', {class: 'field', value: agent.name, 'aria-label': 'Name'});
   const title = h('input', {class: 'field', value: agent.title ?? '', 'aria-label': 'Role'});
+  const zip = h('input', {class: 'field', value: agent.zip ?? '', 'aria-label': 'Store ZIP code', inputmode: 'numeric', maxlength: 5, placeholder: 'e.g. 78701'});
   // The face on the employee: a symbol, not an uploaded picture, so nothing personal leaves the phone for it.
   let avatar = agent.avatar ?? '✦';
   const avatars = AVATARS.map(symbol => {
@@ -31,11 +32,12 @@ export function employee(ctx: Ctx): HTMLElement {
   });
 
   const save = async () => {
+    if (zip.value.trim() && !/^\d{5}$/.test(zip.value.trim())) {ctx.toast('A ZIP code is five digits.'); return;}
     try {
       // runtime is preserved exactly as the server set it. Which engine runs the
       // work is a server-side, owner-scoped decision and is deliberately not a
       // control here.
-      await api.saveAgent({name: name.value.trim(), title: title.value.trim(), instructions: instructions.value, runtime: agent.runtime, skills: [...chosen], avatar});
+      await api.saveAgent({name: name.value.trim(), title: title.value.trim(), instructions: instructions.value, runtime: agent.runtime, skills: [...chosen], avatar, zip: zip.value.trim()});
       forgetEdits();
       await ctx.refresh();
       ctx.toast('Saved.');
@@ -51,6 +53,8 @@ export function employee(ctx: Ctx): HTMLElement {
       h('label', {class: 'label', text: 'Name'}), name,
       h('label', {class: 'label', text: 'Role'}), title,
       h('label', {class: 'label', text: 'How it should work'}), instructions,
+      h('label', {class: 'label', text: 'Store ZIP code'}), zip,
+      h('p', {class: 'note', text: 'Prices, stock and aisle locations come from the Home Depot or Lowe\'s nearest this ZIP.'}),
       h('div', {class: 'row'}, h('button', {class: 'primary', onclick: () => void save()}, 'Save')),
     ),
     h('section', {class: 'card'}, h('h3', {text: 'What it handles'}), ...skillRows,

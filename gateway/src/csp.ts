@@ -13,7 +13,10 @@ function liveKitSources(): string {
   try {url = new URL(process.env.LIVEKIT_URL ?? '');} catch {return '';}
   if (url.protocol !== 'ws:' && url.protocol !== 'wss:') return '';
   const secure = url.protocol === 'wss:';
-  return ` ${secure ? 'wss' : 'ws'}://${url.host} ${secure ? 'https' : 'http'}://${url.host}`;
+  // LiveKit Cloud: the client reads its regions from the project's host, connects to a regional host (wss:, already
+  // allowed), and when that fails asks the regional host why over https (/rtc/validate). Only that is added.
+  const cloud = secure && /\.livekit\.(cloud|run)$/i.test(url.hostname) ? ` https://*.${url.hostname.endsWith('.livekit.run') ? 'livekit.run' : 'livekit.cloud'}` : '';
+  return ` ${secure ? 'wss' : 'ws'}://${url.host} ${secure ? 'https' : 'http'}://${url.host}${cloud}`;
 }
 
 /** The phone app's page policy. No inline script; the only thing it may frame is a live view of the employee's browser. */

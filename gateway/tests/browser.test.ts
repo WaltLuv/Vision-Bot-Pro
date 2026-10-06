@@ -233,7 +233,10 @@ test('the phone app may connect to the configured LiveKit server, and the settin
   process.env.LIVEKIT_URL='ws://127.0.0.1:7880';
   assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: ws:\/\/127\.0\.0\.1:7880 http:\/\/127\.0\.0\.1:7880;/);
   process.env.LIVEKIT_URL='wss://visionbot.livekit.cloud/some/path?x=1';
-  assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: wss:\/\/visionbot\.livekit\.cloud https:\/\/visionbot\.livekit\.cloud;/,'just the origin');
+  // LiveKit Cloud also checks a failed connection with its regional host over https; that, and only that, is added.
+  assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: wss:\/\/visionbot\.livekit\.cloud https:\/\/visionbot\.livekit\.cloud https:\/\/\*\.livekit\.cloud;/,'the origin, and Cloud\'s regional hosts');
+  process.env.LIVEKIT_URL='wss://livekit.example.com';
+  assert.match(appContentSecurityPolicy(),/connect-src 'self' wss: wss:\/\/livekit\.example\.com https:\/\/livekit\.example\.com;/,'a self-hosted LiveKit adds just its origin');
   for(const bad of ["ws://a.example; script-src *","https://livekit.example","not a url"]){
    process.env.LIVEKIT_URL=bad;assert.match(appContentSecurityPolicy(),/connect-src 'self' wss:;/,bad);
   }

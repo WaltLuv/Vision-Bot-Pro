@@ -53,7 +53,6 @@ one pass (it claims about 230 ms). It is called directly over HTTP
 guess at, with a 700 ms limit. Slow, failing, unsure (below 0.6) or unset means
 the rules' answer stands, so Jev can never slow a task down by more than its limit.
 
-The `jev-use` npm package (by `shitianfang`, published September 2026) is not
-installed: the gateway needs one HTTP call, and adding a three-week-old package
-from a single maintainer to the server was not worth it. The
-`vlad-terin/jev-use` repository is not public.
+The `jev-use` npm package is not installed: routing needs one HTTP call. The
+browser side uses `jev-browser` as a library instead (see
+`docs/FIELD-WORKFLOWS.md`). The `vlad-terin/jev-use` repository is not public.

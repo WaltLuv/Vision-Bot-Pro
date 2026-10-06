@@ -94,6 +94,14 @@ cannot work.
   quick search. Browserbase (`BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`) is
   the live browser. Optional: `TYPESAFE_API_KEY` for Jev routing (see
   `docs/FAST-WEB.md`).
+- **Store sign-ins (Pro Xtra, Lowe's Pro)**: `SIGNIN_VAULT_KEY` (`openssl rand -hex 32`; the
+  install scripts generate it). Then sign in once yourself: when the employee
+  needs your account, tap Take over in the live browser and sign in. A Pro Xtra
+  or Lowe's Pro account is needed for volume pricing.
+- **Jev on the browser**: `TYPESAFE_API_KEY` turns on `browser_do`.
+- **Part identification and inspection**: the Gemini key (`GEMINI_API_KEY`).
+- **Fly.io**: `fly volumes create gateway_data --size 5`, set secrets including
+  `SIGNIN_VAULT_KEY`, deploy from the repository root (see `gateway/fly.toml`).
 - **Web search**: a Gemini key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) is
   enough: the employee searches Google through Gemini and gets the pages behind
   each answer. Or `SEARCH_API_KEY` (Brave Search by default; `SEARCH_ENDPOINT`

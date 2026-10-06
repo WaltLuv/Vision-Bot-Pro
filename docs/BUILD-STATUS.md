@@ -147,6 +147,17 @@ tests. None has run against a live account in this repository.
 | Guest browser by default; the owner's saved sign-ins (Browserbase context) only for tasks about their own accounts, and only with standing browser permission | IMPLEMENTED + VERIFIED against a stand-in |
 | A finished task's browser stays open a few minutes, then closes; a stopped task's closes at once | IMPLEMENTED + VERIFIED |
 
+### Field workflows
+
+| Capability | Status |
+|---|---|
+| `browser_do`: Jev (jev-browser 0.1.1) deciding each step on the watched Browserbase page, under purchase, secret and upload guards | IMPLEMENTED + VERIFIED against a real Chromium with a deliberately careless Jev stand-in; live Jev BLOCKED ON OWNER CREDENTIAL (`TYPESAFE_API_KEY`) |
+| Guest and account browser sessions; retailer cookies encrypted on `/data`, restored, forgotten | IMPLEMENTED + VERIFIED against real Chromium; live Pro Xtra / Lowe's Pro BLOCKED ON OWNER ACCOUNT |
+| Parts run: Gemini part identification, parametric SKU matching, aisle and bay, walking route | IMPLEMENTED + VERIFIED against fixtures; live Gemini vision BLOCKED ON OWNER CREDENTIAL; aisle text formats taken from public product pages, not a live store session |
+| Hermes in the Fly image; `shared-cpu-2x`, 2 GB, 5 GB `/data` volume | IMPLEMENTED + VERIFIED by building the image and running a Hermes task in it with a mounted volume; Fly deploy BLOCKED ON OWNER ACCOUNT |
+| LiveKit Cloud page policy | IMPLEMENTED + VERIFIED (unit); live LiveKit Cloud BLOCKED ON OWNER CREDENTIAL |
+| Gemini structural anomaly detection: phone inspection mode, voice agent tool, employee tool | IMPLEMENTED + VERIFIED against a Gemini stand-in (gateway, PWA, and the agent tool with the real LiveKit SDK); live Gemini BLOCKED ON OWNER CREDENTIAL |
+
 ### Connected apps and routines
 
 | Capability | Status |

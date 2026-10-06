@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';import {chromium,type Browser,type Locator,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
+import {JevBrowser} from 'jev-browser';import {chromium,type Browser,type Locator,type Page} from 'playwright';import {z} from 'zod';import {Store} from './db.js';import {Refused,ToolGateway,type ToolContext} from './tools.js';import {loadSignins,saveSignins,signinsEnabled,type Cookie} from './signins.js';import {embeddableLiveUrl,waitForBrowserSlot,type DrivenBrowsers} from './browser.js';
 
 /**
  * Browserbase: a remote browser the employee drives itself, one step at a time.
@@ -45,11 +45,49 @@ async function onPage<T>(what:string,act:()=>Promise<T>):Promise<T>{
  catch(e){if((e as Error)?.name==='TimeoutError')throw new Refused(`${what} could not be used: it stayed hidden, covered or disabled. Nothing was changed.`);throw e;}
 }
 
-interface Open{browser:Browser;page:Page;computerId:string}
-/** How a browser starts: guest is a fresh browser with nothing of the owner's; account carries the owner's saved sign-ins. */
+interface Open{browser:Browser;page:Page;computerId:string;owner:string;account:boolean;jev?:GuardedJev}
+/**
+ * The two kinds of browser. guest: stateless, nothing of the owner's, for looking things up (a ZIP-targeted price
+ * check at Home Depot or Lowe's). account: comes back signed in to the owner's own retailer accounts from the
+ * encrypted sign-in vault on the data volume, for Pro Xtra or volume (VPP) pricing and staging a cart; its cookies
+ * for those retailers are saved back when it closes or is handed back. Checkout stays refused in both.
+ */
 export interface OpenOptions{session?:'guest'|'account'}
 // After a task is done its browser stays open this long, so the owner can see where it ended and take over.
 export const lingerMs=()=>Number(process.env.BROWSER_LINGER_MS??180_000);
+
+/**
+ * jev-browser (an unofficial library around TypeSafe's Jev) deciding each click and keystroke toward one stated
+ * outcome, in about 300 ms a decision, on the same Browserbase page the owner is watching. It is used as a library,
+ * never as its own MCP server: that would give the model a second, ungoverned browser the owner cannot see.
+ *
+ * Its own safeguards stay on (it stops before anything it judges irreversible, and dismisses confirm dialogs), and
+ * the gateway's go under them, checked against the element actually about to be used, whatever Jev chose: no
+ * button that orders or pays, no password or payment field, no file upload (a path from the model would read this
+ * server's disk), and never a step while the owner has the browser.
+ */
+export class GuardedJev extends JevBrowser{
+ refused:string[]=[];
+ constructor(browser:Browser,page:Page,readonly turn:()=>Promise<void>){super(browser,page.context(),false);this.page=page;}
+ override async act(a:{tool:string;target?:number|null;value?:unknown;key?:string;destination?:number}){
+  const refuse=(why:string)=>{this.refused.push(why);throw new Refused(why);};
+  if(a.tool==='upload')refuse('The browser will not upload files.');
+  await this.turn();
+  const loc=a.target==null?null:this.locate(a.target);
+  if(loc&&['click','press_enter','press_key','right_click'].includes(a.tool)){
+   const name=await loc.evaluate((e:any)=>[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title'),e.form?.getAttribute('action')].filter(Boolean).join(' '),undefined,{timeout:5000}).catch(()=>'');
+   if(PURCHASE.test(name))refuse(NO_PURCHASE);
+  }
+  if(loc&&['type','select'].includes(a.tool)){
+   const f=await loc.evaluate((e:any)=>({type:String(e.type??''),autocomplete:String(e.getAttribute('autocomplete')??''),words:[e.name,e.id,e.placeholder,e.getAttribute('aria-label'),...[...(e.labels??[])].map((l:any)=>l.innerText)].filter(Boolean).join(' ')}),undefined,{timeout:5000}).catch(()=>({type:'',autocomplete:'',words:''}));
+   if(f.type==='password'||SECRET_AUTOCOMPLETE.test(f.autocomplete)||SECRET_FIELD.test(f.words))refuse(NO_SECRET);
+  }
+  return super.act(a);
+ }
+}
+export const jevBrowserEnabled=()=>!!process.env.TYPESAFE_API_KEY&&process.env.JEV_BROWSER!=='off';
+// Card numbers and the like never go to a website from the model, whatever the field is called.
+const SECRET_VALUE=/^\s*(?:\d[ -]?){13,19}\s*$/;
 
 export class BrowserbaseBrowsers implements DrivenBrowsers{
  private open=new Map<string,Open>();
@@ -63,9 +101,9 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
   return r.json() as Promise<any>;
  }
  register(t:ToolGateway){
-  t.register({id:'browser_open',effect:'computer',title:'Open a browser you can watch',schema:z.object({purpose:z.string().min(3).max(300)}),
-   description:'Open a live web browser for this task, to read and use websites step by step. The owner can watch it and take it over. It will not type passwords or payment details or place orders; when a site needs those, say so and the owner can take over.',
-   run:async(a,c)=>this.openFor(c,a.purpose)});
+  t.register({id:'browser_open',effect:'computer',title:'Open a browser you can watch',schema:z.object({purpose:z.string().min(3).max(300),session:z.enum(['guest','account']).default('guest')}),
+   description:'Open a live web browser for this task, to read and use websites step by step. The owner can watch it and take it over. session guest (default) is a fresh browser for looking things up; session account comes back signed in to the owner\'s own Home Depot or Lowe\'s accounts, for Pro Xtra or volume pricing and staging a cart. It will not type passwords or payment details or place orders; when a site needs a sign-in, the owner takes over and signs in.',
+   run:async(a,c)=>this.openFor(c,a.purpose,{session:a.session})});
   t.register({id:'browser_goto',effect:'read',schema:z.object({url:z.string().url().refine(u=>/^https?:\/\//i.test(u),'Only web addresses can be opened')}),
    description:'Go to a web address in the open browser',
    run:async(a,c)=>{const o=await this.step(c);await o.page.goto(a.url,{waitUntil:'domcontentloaded',timeout:30_000});return this.where(o.page);}});
@@ -95,6 +133,20 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
     await onPage(`The field "${a.target}"`,()=>el.fill(a.text,{timeout:10_000}));
     if(a.submit){await el.press('Enter');await o.page.waitForLoadState('domcontentloaded',{timeout:15_000}).catch(()=>{});}
     return this.where(o.page);}});
+  if(jevBrowserEnabled())t.register({id:'browser_do',effect:'write',
+   schema:z.object({goal:z.string().min(3).max(300),values:z.record(z.string().max(40),z.string().max(500)).refine(v=>Object.keys(v).length<=10,'At most 10 values').default({})}),
+   description:'Fast: get one outcome done in the open browser, with each click and keystroke decided in well under a second. Name one outcome per call ("search for 1/2 in drywall", "set the store to ZIP 78701", "add 12 to the cart", "open the specifications tab"). Put any text to type in values. It stops before anything hard to undo; it will not pay, place orders, upload files or type passwords or payment details. Returns a status: done, likely_done (check the page), needs_confirmation, needs_login, refused, stuck, blocked or error.',
+   run:async(a,c)=>{
+    for(const [k,v] of Object.entries(a.values as Record<string,string>))if(SECRET_FIELD.test(k)||SECRET_VALUE.test(v))throw new Refused(NO_SECRET);
+    const o=await this.step(c);
+    o.jev??=new GuardedJev(o.browser,o.page,async()=>{await this.step(c);});
+    o.jev.refused=[];
+    const r=await o.jev.do(a.goal,{values:a.values,maxActions:Number(process.env.JEV_BROWSER_MAX_ACTIONS??10),allowIrreversible:false});
+    const refused=o.jev.refused[0];
+    return {status:refused?'refused':r.status,...(refused?{info:refused}:r.info?{info:r.info}:{}),
+     ...(r.status==='needs_confirmation'?{info:'Stopped before a step that looks hard to undo. Purchases go through checkout with the owner approving the exact total; for anything else, ask the owner, who can take the browser over.'}:{}),
+     url:r.url,title:r.title,actions:(r.actions??[]).slice(-12),jevCalls:r.jev_calls,ms:r.ms,...(r.page_text?{pageText:String(r.page_text).slice(0,600)}:{})};
+   }});
   t.register({id:'browser_screenshot',effect:'read',schema:z.object({}),
    description:'Save a picture of the open browser as evidence for this task',
    run:async(_a,c)=>{const o=await this.step(c);const shot=await o.page.screenshot({type:'jpeg',quality:70,timeout:15_000});const a=this.db.create(c.owner,'artifact',{runId:c.runId,kind:'screenshot',name:`Browser at ${new Date().toISOString()}`,mime:'image/jpeg',base64:shot.toString('base64')});return {artifactId:a.id,...await this.where(o.page)};}});
@@ -104,17 +156,6 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
  }
  /** The browser open for a task, if any: its page, for the gateway's own first steps. */
  page(owner:string,runId:string){return this.open.get(this.key({owner,runId}))?.page;}
- /**
-  * The owner's own Browserbase context: cookies and sign-ins that persist between sessions, so a site they logged
-  * into once (in a browser they took over) stays logged in. Only an account session uses it; guest ones never see it.
-  */
- private async context(owner:string){
-  const id=createHash('sha256').update('bb-context:'+owner).digest('hex'),known=this.db.get(owner,'browser_context',id);
-  if(known?.providerContextId)return String(known.providerContextId);
-  const created=await this.api('/v1/contexts',{method:'POST',body:JSON.stringify({...project()})});
-  this.db.put(owner,'browser_context',{id,provider:'browserbase',providerContextId:String(created.id),createdAt:new Date().toISOString()});
-  return String(created.id);
- }
  /** Close browsers kept open after their task, to free their slots for new work. */
  async releaseLingering(){for(const {owner,data} of this.db.all('computer'))if(data.provider==='browserbase'&&data.lingerUntil&&!ended(data.status))await this.release(owner,data.id,'closed');}
  async openFor(c:ToolContext,purpose:string,options:OpenOptions={}){
@@ -130,14 +171,15 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
    await this.releaseLingering();
    await waitForBrowserSlot(this.db,ticket,c.assertAuthorized);
    c.assertAuthorized();this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,status:'starting'});this.db.event(c.owner,'computer.updated',{runId:c.runId,computerId:ticket.id});
-   const saved=options.session==='account'?await this.context(c.owner):null;
-   const session=await this.api('/v1/sessions',{method:'POST',body:JSON.stringify({...project(),api_timeout:SESSION_SECONDS,...(saved?{browserSettings:{context:{id:saved,persist:true}}}:{})})});
+   const account=options.session==='account';if(account&&!signinsEnabled())throw new Refused('Saved sign-ins are not set up on this server (SIGNIN_VAULT_KEY).');
+   const session=await this.api('/v1/sessions',{method:'POST',body:JSON.stringify({...project(),api_timeout:SESSION_SECONDS})});
    this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,providerId:String(session.id)});
    const live=await this.api(`/v1/sessions/${encodeURIComponent(session.id)}/debug?expiresIn=${SESSION_SECONDS}`);
    c.assertAuthorized();
    const browser=await chromium.connectOverCDP(String(session.connectUrl),{timeout:30_000});
    const context=browser.contexts()[0]??await browser.newContext(),page=context.pages()[0]??await context.newPage();
-   this.open.set(this.key(c),{browser,page,computerId:ticket.id});
+   if(account){const {cookies}=loadSignins(c.owner);if(cookies.length)await context.addCookies(cookies);}
+   this.open.set(this.key(c),{browser,page,computerId:ticket.id,owner:c.owner,account});
    const url=typeof live.debuggerFullscreenUrl==='string'?live.debuggerFullscreenUrl:null;
    let host:string|undefined;try{host=url?new URL(url).host:undefined;}catch{}
    this.db.put(c.owner,'computer',{...this.db.get(c.owner,'computer',ticket.id)!,status:'working',liveUrl:url,liveEmbed:embeddableLiveUrl(url),liveHost:host,liveFrom:String(session.id)});
@@ -164,10 +206,14 @@ export class BrowserbaseBrowsers implements DrivenBrowsers{
    label:String(e.getAttribute('aria-label')||e.innerText||e.placeholder||e.value||e.name||'').trim().replace(/\s+/g,' ').slice(0,80),
   })).filter(x=>x.label).slice(0,80));
  }
+ /** Save an account browser's retailer sign-ins to the vault. Guest browsers never are. */
+ private async keepSignins(o:Open){if(!o.account)return;try{saveSignins(o.owner,await o.page.context().cookies() as Cookie[]);}catch{console.error(JSON.stringify({event:'employee.signin_save_failed',computerId:o.computerId}));}}
+ /** After the owner hands an account browser back (having signed in, say), keep what they did. */
+ async persist(owner:string,computerId:string){for(const o of this.open.values())if(o.owner===owner&&o.computerId===computerId)await this.keepSignins(o);}
  /** End a session: tell Browserbase, let go of it, and drop the live link. */
  async release(owner:string,computerId:string,status:'closed'|'cancelled'){
   const r=this.db.get(owner,'computer',computerId);if(!r)return;
-  for(const [k,o] of this.open)if(o.computerId===computerId){this.open.delete(k);await o.browser.close().catch(()=>{});}
+  for(const [k,o] of this.open)if(o.computerId===computerId){await this.keepSignins(o);this.open.delete(k);await o.browser.close().catch(()=>{});}
   if(r.providerId&&!ended(r.status)){
    // Without keepAlive a session also ends when its connection closes (just done); this ends it promptly and stops the charge.
    try{await this.api(`/v1/sessions/${encodeURIComponent(r.providerId)}`,{method:'POST',body:JSON.stringify({status:'REQUEST_RELEASE',...project()})});}

@@ -33,3 +33,8 @@ At the end, report the exact `main` commit SHA, test results, blocked owner-cred
 eBay is optional only. It is not the launch procurement strategy.
 
 The launch must support Home Depot, Lowe's, Amazon, Walmart, configurable local suppliers and configurable specialty vendors through a provider-neutral supplier registry. Implement normalized offers, parallel search, price/inventory/fulfillment comparison, cart building, exact quote revalidation and approval-gated checkout. Use official APIs where available and approved Browserbase/Stagehand or MCP adapters where APIs are unavailable. Do not fake availability, checkout or order success. Add fixture tests for each adapter and document the owner credentials required for live verification.
+
+
+## Field workflows scope
+
+In scope (see `docs/IMPLEMENTATION-PLAN.md` and `docs/FIELD-WORKFLOWS.md`): Jev-driven Browserbase automation through the governed `browser_do` tool; guest (ZIP-targeted) and authenticated (encrypted cookies on `/data`, Pro Xtra and Lowe's Pro pricing, cart staging) browser sessions; part identification, parametric SKU matching and aisle and bay routing; Hermes in the Fly.io image on a `shared-cpu-2x` machine with a 5 GB `/data` volume; LiveKit Cloud with the owner's credentials; Gemini structural anomaly detection on camera frames. Checkout, sending and deleting stay approval-gated in every one of them, and jev-browser is never exposed as its own MCP server.

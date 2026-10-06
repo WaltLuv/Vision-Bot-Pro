@@ -31,7 +31,8 @@ const CURRENT=/\b(today|tonight|this week|latest|current|currently|now|news|open
 const APPS=/\b(gmail|inbox|e-?mail|outlook|calendar|meeting|slack|teams|discord|notion|google (sheet|doc)s?|spreadsheet)\b/i;
 const ACTIONS=/\b(send|text|call|pay|checkout|check out|place (the |an )?order|delete|cancel|transfer|wire)\b/i;
 // "my account", "my order", "log in": the task is about the owner's own account on a site.
-const ACCOUNT=/\b(my|our) (account|order|orders|subscription|bill|billing|portal|profile|cart|reservation|booking)s?\b|\blog ?in\b|\bsign ?in\b|\bsigned in\b/i;
+// Pro Xtra and Lowe's Pro volume (VPP) pricing, and staging a cart, only exist signed in.
+const ACCOUNT=/\b(my|our) (account|order|orders|subscription|bill|billing|portal|profile|cart|reservation|booking)s?\b|\blog ?in\b|\bsign ?in\b|\bsigned in\b|\bpro ?xtra\b|\bvolume pric|\bvpp\b|\bpro pric|\b(stage|staging|build|add (it |them |these |this )?to) (the |my |a )?cart\b/i;
 
 /** The words to search for: the request minus the polite framing and the store name. */
 export function searchQuery(task:string):string{

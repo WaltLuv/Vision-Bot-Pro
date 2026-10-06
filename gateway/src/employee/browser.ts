@@ -30,7 +30,7 @@ export async function waitForBrowserSlot(db:Store,ticket:Row,assertAuthorized:()
  while(db.all('computer').filter(x=>['starting','working','cleanup_pending'].includes(x.data.status)&&!x.data.lingerUntil&&x.data.runId!==ticket.runId).length>=Number(process.env.COMPUTER_CAPACITY??1)||db.all('computer').some(x=>x.data.status==='queued'&&x.data.createdAt<ticket.createdAt)){assertAuthorized();if(Date.now()>deadline)throw Error('Browser queue wait expired');await new Promise(r=>setTimeout(r,750));}
 }
 /** A browser provider the employee drives itself; ending one of its sessions is provider business. */
-export interface DrivenBrowsers{release(owner:string,computerId:string,status:'closed'|'cancelled'):Promise<void>}
+export interface DrivenBrowsers{release(owner:string,computerId:string,status:'closed'|'cancelled'):Promise<void>;persist?(owner:string,computerId:string):Promise<void>}
 const LINGER_DEFAULT=180_000;
 
 export class BrowserCapability{
@@ -68,7 +68,9 @@ export class BrowserCapability{
   // A browser the employee drives itself needs no provider call: its next step waits while the owner has it.
   if(r.provider==='browserbase'){
    const now=Date.now(),next:Row=to==='owner'?{...r,control:'owner',controlSince:now}:{...r,control:'agent',pausedMs:withOwner(r,now),controlSince:undefined};
-   this.db.put(owner,'computer',next);this.db.event(owner,'computer.updated',{runId:r.runId,computerId:id,control:to});return next;
+   this.db.put(owner,'computer',next);this.db.event(owner,'computer.updated',{runId:r.runId,computerId:id,control:to});
+   if(to==='agent')await this.driven?.persist?.(owner,id);
+   return next;
   }
   if(to==='owner'){
    if(!r.providerSession)throw Error("This browser can't be handed over, so your employee is still driving. You can stop it.");

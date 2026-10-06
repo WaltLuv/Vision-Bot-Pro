@@ -80,6 +80,7 @@ export function settings(ctx: Ctx): HTMLElement {
       c?.mcpError ? h('p', {class: 'note', text: 'Some connected tools are misconfigured on the server.'}) : null,
     ),
     speedCard(ctx),
+    signinsCard(ctx),
     connectorsCard(ctx),
     suppliersCard(ctx),
     h('section', {class: 'card'},
@@ -108,6 +109,24 @@ function speedCard(ctx: Ctx): HTMLElement {
     row('Live browser', !!c?.liveBrowser, 'Ready', 'Opens as soon as a task needs the web, so you can watch every step and take over.'),
     row('Fast routing', !!c, c?.router === 'jev' ? 'Rules + Jev' : 'Rules', 'Decides in a moment whether a task needs the web, a store, your apps or your approval.'),
     h('label', {class: 'check', for: 'auto-watch'}, box, h('span', {}, h('span', {class: 'title', text: 'Show the browser as soon as it opens'}), h('span', {class: 'sub', text: 'On this phone. Off: tap Watch it browse when you want to see it.'}))),
+  );
+}
+
+/** Saved retailer sign-ins (Pro Xtra, Lowe's Pro): which stores, and a way to forget them. Never the cookies. */
+function signinsCard(ctx: Ctx): HTMLElement {
+  const s = ctx.signins;
+  const forget = async () => {
+    if (!confirm('Forget your saved store sign-ins? Your employee will need you to sign in again for Pro pricing.')) return;
+    try {await api.forgetSignins(); await ctx.refresh(); ctx.toast('Saved sign-ins forgotten.');}
+    catch (err) {ctx.toast(err instanceof Error ? err.message : 'Those could not be forgotten.');}
+  };
+  const name = (d: string) => ({'homedepot.com': 'The Home Depot', 'lowes.com': "Lowe's"} as Record<string, string>)[d] ?? d;
+  return h('section', {class: 'card'},
+    h('h3', {text: 'Store sign-ins'}),
+    !s?.enabled ? h('p', {class: 'note', text: 'Saved sign-ins are not set up on this server, so Pro Xtra and volume pricing are not available. Price lookups still work.'})
+      : s.saved.length ? h('p', {class: 'note', text: `Signed in to ${s.saved.map(name).join(' and ')}${s.savedAt ? `, saved ${new Date(s.savedAt).toLocaleDateString()}` : ''}. Used only for Pro pricing and building a cart; never to pay.`})
+      : h('p', {class: 'note', text: `None yet. When your employee needs your ${s.domains.map(name).join(' or ')} account, tap Take over in the live browser and sign in yourself. It is kept, encrypted, for next time.`}),
+    s?.saved.length ? h('div', {class: 'row'}, h('button', {class: 'ghost danger', onclick: () => void forget()}, 'Forget saved sign-ins')) : null,
   );
 }
 

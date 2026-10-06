@@ -1,4 +1,4 @@
-import type {AppConnection, Connections, State} from '../api';
+import type {AppConnection, Connections, SigninStatus, State} from '../api';
 import type {Camera} from '../camera';
 import type {Card, RealtimeSession, SessionState, TranscriptEntry} from '../realtime';
 
@@ -11,6 +11,8 @@ export interface Ctx {
   apps: AppConnection[] | null;
   /** An app a task just asked for that is not connected. */
   appNeeded: string | null;
+  /** Saved retailer sign-ins: which, never what. */
+  signins: SigninStatus | null;
   /** Gateway event stream health, not network health in general. */
   streamOnline: boolean;
   session: RealtimeSession;

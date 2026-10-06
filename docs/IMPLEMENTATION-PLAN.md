@@ -14,3 +14,21 @@ Acceptance order:
 8. Runtime tests, security tests, PWA build, native environment checks, deployment and docs.
 
 Every claim requires execution evidence. Fixture tests prove contract behavior; live provider success requires actual credentials. No fake successes, no permanently inferred spending authority, no provider secrets in clients.
+
+## Field workflows scope (October 2026)
+
+Three phases added to the scope. Detail, design decisions and status: `docs/FIELD-WORKFLOWS.md`.
+
+1. **High-speed hybrid browser automation.** Jev (through `jev-browser`, used as a library) decides each step on
+   the owner's live Browserbase page, under the gateway's own purchase, secret and upload guards. Two browser
+   sessions: a stateless guest session for ZIP-targeted Home Depot and Lowe's lookups, and an authenticated
+   session whose retailer cookies are kept encrypted on the `/data` volume, for Pro Xtra and Lowe's Pro volume
+   (VPP) pricing and cart staging. Checkout stays approval-gated. First worker flow: Gemini identifies a part from
+   a photo, parametric SKU matching ranks the replacements, and the aisle and bay of each item become a walking
+   route through the store.
+2. **Orchestrator on Fly.io.** Hermes (`hermes/bridge.py`, `hermes-agent` pinned) ships in the gateway image;
+   `fly.toml` runs a `shared-cpu-2x` machine with a 5 GB `/data` volume for SQLite, artifacts, Hermes homes and
+   the sign-in vault.
+3. **Real-time streaming and vision.** The phone connects to LiveKit Cloud with the owner's LiveKit credentials
+   (server-issued room tickets). Camera frames go to Gemini for structural anomaly detection, from the phone's
+   inspection mode and from the voice agent.

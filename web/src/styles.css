@@ -168,3 +168,16 @@ a.ghost { border-color: var(--line); }
   .steps li.now::before { animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
 }
+
+/* Inspection mode: boxes over the preview, findings under it. */
+.preview-wrap { position: relative; }
+.inspect-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 10px; }
+.inspect-box { position: absolute; border: 2px solid #f0b429; border-radius: 6px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.inspect-box span { position: absolute; top: -1.4em; left: -2px; font-size: .72rem; padding: 1px 6px; border-radius: 6px 6px 6px 0; background: #f0b429; color: #111; white-space: nowrap; }
+.inspect-box.sev-high, .inspect-box.sev-critical { border-color: var(--danger); }
+.inspect-box.sev-high span, .inspect-box.sev-critical span { background: var(--danger); color: #fff; }
+.inspect { display: flex; flex-direction: column; gap: 8px; }
+.inspect-results { display: flex; flex-direction: column; gap: 4px; }
+.pill.sev-high, .pill.sev-critical { color: var(--danger); }
+.pill.sev-medium { color: #f0b429; }
+.warn-text { color: #f0b429; }

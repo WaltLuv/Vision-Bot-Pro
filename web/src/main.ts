@@ -25,6 +25,7 @@ const ctx: Ctx = {
   connections: null,
   apps: null,
   appNeeded: null,
+  signins: null,
   streamOnline: false,
   sessionState: 'idle',
   camera: new Camera(),
@@ -45,6 +46,7 @@ const ctx: Ctx = {
       const [state, connections] = await Promise.all([api.state(), api.connections().catch(() => ctx.connections)]);
       ctx.state = state as State;
       ctx.connections = (connections ?? null) as Connections | null;
+      ctx.signins = await api.signins().catch(() => ctx.signins);
       if (ctx.connections?.apps) ctx.apps = (await api.composioTools().catch(() => null))?.tools ?? ctx.apps;
     } catch {/* keep what is on screen */}
     render();

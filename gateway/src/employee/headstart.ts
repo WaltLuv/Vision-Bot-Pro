@@ -1,5 +1,5 @@
 import {Store,type Row} from './db.js';import {terminal} from './runs.js';import {routeTask,type Route} from './route.js';import {search,searchProvider,type SearchResult} from './web.js';
-import {browserbaseEnabled,type BrowserbaseBrowsers} from './browserbase.js';
+import {browserbaseEnabled,type BrowserbaseBrowsers} from './browserbase.js';import {signinsEnabled} from './signins.js';
 /**
  * The head start: the work a web task always needs, begun the moment the task arrives instead of after an agent
  * runtime has started up and decided on it. The task is routed; for anything on the web the live browser opens at
@@ -57,7 +57,7 @@ export class HeadStart{
   // The owner's word on browsers stands: "never" means no head start browser either, and their saved sign-ins are
   // only used when they have said "always allow" to opening one. A guest browser holds nothing of theirs.
   const policy=this.db.list(owner,'policy').find(p=>p.tool==='browser_open')?.policy;if(policy==='never')return;
-  const session=route.session==='account'&&policy==='allow'?'account':'guest';
+  const session=route.session==='account'&&policy==='allow'&&signinsEnabled()?'account':'guest';
   const browsers=this.browsers!,assertAuthorized=()=>{if(!this.active(owner,runId))throw Error('Task is no longer active');};
   this.step(owner,runId,session==='account'?'Opening your browser, with your saved sign-ins…':'Opening a live browser…');
   try{await browsers.openFor({owner,runId,actionId:'headstart',assertAuthorized},route.query,{session});}

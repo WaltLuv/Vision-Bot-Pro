@@ -5,6 +5,7 @@ import type {Card} from '../realtime';
 import {activeRun, isTerminal, liveApprovals, relativeTime, runTitle, STATUS_LABEL, canResume, unreconciledActions} from '../store';
 import {approvalCard} from './approvals';
 import {findings, liveBrowserCard, steps} from './progress';
+import {inspectionOverlay, inspectionPanel} from './inspect';
 import {richText} from '../rich';
 import type {Ctx} from './ctx';
 import {Dictation, dictationMessage, dictationSupported} from '../voice';
@@ -185,7 +186,7 @@ export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) =>
   const capture = () => askAboutPhoto(ctx, 'Look at the attached photo and tell me what you see.');
 
   return h('section', {class: 'card camera'},
-    cam.stream ? preview : h('div', {class: 'preview placeholder'}, h('p', {text: cam.error ? cameraMessage[cam.error] : 'Camera is off.'})),
+    cam.stream ? h('div', {class: 'preview-wrap'}, preview, inspectionOverlay(preview)) : h('div', {class: 'preview placeholder'}, h('p', {text: cam.error ? cameraMessage[cam.error] : 'Camera is off.'})),
     h('div', {class: 'row wrap'},
       cam.stream
         ? h('button', {class: 'ghost', onclick: () => void stopCamera()}, 'Stop camera')
@@ -195,6 +196,7 @@ export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) =>
       cam.stream ? h('button', {class: 'ghost', onclick: () => void capture()}, 'Send photo') : null,
     ),
     ctx.camera.pinned ? h('p', {class: 'note', text: 'Frozen. The employee keeps seeing this frame until you unfreeze.'}) : null,
+    inspectionPanel(ctx, () => ctx.camera.capture(preview)),
     voiceRow(ctx, send),
   );
 }

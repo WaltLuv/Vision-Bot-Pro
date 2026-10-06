@@ -18,6 +18,7 @@ OPENAI_REALTIME_MODEL.
 """
 
 import asyncio
+import contextlib
 from gateway_client import execute_task, await_run
 import base64
 import io
@@ -289,6 +290,53 @@ async def quick_search(ctx: RunContext[Userdata], query: str) -> str:
     if text:
         await _push_search_card(ctx, query, text)
     return text or "The search returned nothing useful; try execute for a deeper attempt."
+
+
+@function_tool
+async def inspect_structure(ctx: RunContext[Userdata], focus: str = "") -> str:
+    """Check what the camera shows right now for structural and building problems:
+    cracks, water damage, mold, rot, corrosion, sagging, leaks, electrical or fire
+    hazards. Use when the user asks you to inspect, check for damage, or whether
+    something looks wrong. focus: what they are checking, e.g. "window header".
+    Findings are observations, not diagnoses."""
+    image_b64 = encode_latest_frame(ctx.userdata.frames)
+    if not image_b64:
+        return "There is no camera picture yet. Ask the user to turn the camera on and point it at the area."
+    query = urllib.parse.urlencode({"source": "voice", "focus": focus[:300]})
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                f"{_gateway_url()}/api/inspect?{query}",
+                headers={**_gateway_headers(ctx.userdata.user_id), "Content-Type": "image/jpeg"},
+                data=base64.b64decode(image_b64),
+                timeout=aiohttp.ClientTimeout(total=40),
+            ) as resp:
+                body = await resp.json()
+                if resp.status != 200:
+                    message = (body.get("error") or {}).get("message") or f"HTTP {resp.status}"
+                    return f"The inspection did not run: {message}"
+    except Exception:
+        logger.exception("inspect_structure failed: user=%s", ctx.userdata.user_id)
+        return "The inspection failed. Offer to try again."
+    findings = body.get("findings") or []
+    ctx.userdata.tracer.emit("agent_action", tool="inspect_structure", findings=len(findings))
+    room = ctx.userdata.room
+    if room is not None:
+        # Built in code from the gateway's answer, like the notes card: the model narrates, it never writes this UI.
+        with contextlib.suppress(Exception):
+            await _publish_card(room, {
+                "uuid": "inspection", "version": 1, "type": "list",
+                "title": "Inspection" if findings else "Inspection: nothing found",
+                "items": [{"title": f.get("description", "")[:80], "subtitle": f.get("location", "")[:60],
+                           "trailing": f.get("severity", "")} for f in findings[:6]],
+                "body": None if findings else _card_text(body.get("summary", ""), 300),
+                "fallback_text": _card_text(body.get("summary", ""), 100),
+            })
+    if not findings:
+        return f"Nothing wrong was visible. {body.get('summary', '')}"
+    lines = [f"{f.get('severity')}: {f.get('description')} ({f.get('location', '')})" for f in findings[:4]]
+    tail = " Say that a professional should look at it." if body.get("needsProfessional") else ""
+    return "Possible findings, worst first: " + "; ".join(lines) + "." + tail
 
 
 # How long a tool call may hold the model's turn open before the answer is
@@ -1153,7 +1201,7 @@ async def entrypoint(ctx: JobContext):
     await session.start(
         agent=Agent(
             instructions=INSTRUCTIONS,
-            tools=[execute, browse, quick_search, show_card, save_note, recall_notes, delete_note],
+            tools=[execute, browse, quick_search, inspect_structure, show_card, save_note, recall_notes, delete_note],
         ),
         room=ctx.room,
         # Video is opt-in (RoomInputOptions.video_enabled defaults to False);

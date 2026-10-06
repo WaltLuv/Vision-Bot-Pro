@@ -19,7 +19,11 @@ export interface Progress {route?: RouteInfo; progress?: {at: string; text: stri
 export interface Run extends Row, Progress {task: string; title?: string; status: RunStatus; result?: string; error?: string; recovered?: boolean; conversationId?: string; createdAt?: string; completedAt?: string; context?: {source?: Source; attachments?: string[]; visualDescription?: string}}
 export interface Approval extends Row {runId: string; tool: string; label: string; effect: Effect; details: Record<string, unknown>; status: 'pending' | 'approved' | 'denied'; expiresAt: number}
 export interface Artifact extends Row {runId?: string; kind: string; name: string; mime?: string; text?: string}
-export interface Agent extends Row {name: string; title: string; instructions: string; runtime: 'hermes' | 'anthropic' | 'claude'; skills: string[]; avatar?: string; provider?: string; model?: string}
+export interface Agent extends Row {name: string; title: string; instructions: string; runtime: 'hermes' | 'anthropic' | 'claude'; skills: string[]; avatar?: string; provider?: string; model?: string; zip?: string}
+/** What Gemini saw in one camera frame. box is [ymin, xmin, ymax, xmax] on the whole frame, 0-1000. */
+export interface Finding {type: string; severity: 'low' | 'medium' | 'high' | 'critical'; confidence: number; description: string; location: string; box?: number[]; recommendation: string}
+export interface Inspection {inspectionId: string; photoId: string; findings: Finding[]; summary: string; needsProfessional: boolean}
+export interface SigninStatus {enabled: boolean; domains: string[]; saved: string[]; savedAt: string | null}
 export interface Skill extends Row {key: string; name: string; instructions: string}
 export interface Memory extends Row {kind: 'profile' | 'work' | 'note' | 'workspace'; text: string}
 export interface Contact extends Row {name?: string}
@@ -130,7 +134,7 @@ export const api = {
   reconcile: (actionId: string, evidence: string) =>
     call<void>('POST', `/api/actions/${encodeURIComponent(actionId)}/reconcile`, {evidence}),
 
-  saveAgent: (agent: Pick<Agent, 'name' | 'title' | 'instructions' | 'runtime' | 'skills'> & Partial<Pick<Agent, 'provider' | 'model' | 'avatar'>>) =>
+  saveAgent: (agent: Pick<Agent, 'name' | 'title' | 'instructions' | 'runtime' | 'skills'> & Partial<Pick<Agent, 'provider' | 'model' | 'avatar' | 'zip'>>) =>
     call<Agent>('PUT', '/api/agent', agent),
 
   addMemory: (kind: Memory['kind'], text: string) => call<Memory>('POST', '/api/memory', {kind, text}),
@@ -159,6 +163,12 @@ export const api = {
   startComposioConnection: (id: string) => call<AppConnection & {connectUrl: string | null}>('POST', `/api/composio/tools/${encodeURIComponent(id)}/connect`, {}),
   checkComposioConnection: (id: string) => call<AppConnection>('GET', `/api/composio/tools/${encodeURIComponent(id)}/status`),
   disconnectComposio: (id: string) => call<AppConnection>('POST', `/api/composio/tools/${encodeURIComponent(id)}/disconnect`, {}),
+
+  /** One camera frame, checked for structural anomalies. */
+  inspect: (frame: Blob, focus = '') =>
+    call<Inspection>('POST', `/api/inspect?focus=${encodeURIComponent(focus)}`, frame, {'content-type': frame.type || 'image/jpeg'}),
+  signins: () => call<SigninStatus>('GET', '/api/signins'),
+  forgetSignins: () => call<void>('DELETE', '/api/signins'),
 
   stopComputer: (id: string) => call<void>('POST', `/api/computers/${encodeURIComponent(id)}/stop`, {}),
   // The gateway pauses the employee at the browser provider before it answers;

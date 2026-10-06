@@ -16,6 +16,7 @@ Relevant selected memory: ${JSON.stringify(memories.map(m=>({kind:m.kind,text:m.
 Selected attachment IDs (authorized by this task): ${(run.context?.attachments??[]).join(',')}
 Visual description: ${run.context?.visualDescription??''}
 Previously completed actions on this same task (do not repeat): ${JSON.stringify(completed).slice(0,12000)}
+${profile?.zip?`The owner's ZIP for store prices, stock and aisle locations: ${profile.zip}. At Home Depot or Lowe's, set the store to the one nearest it before reading prices (browser_do "set my store to the one nearest ZIP ${profile.zip}" when offered).`:''}
 ${HeadStart.context(run)}`;}
 export function registerLocalTools(t:ToolGateway,db:Store){
  t.register({id:'memory_recall',description:'Find relevant saved memory',effect:'read',schema:z.object({query:z.string().min(2).max(200),workspace:z.string().optional()}),run:async(a,c)=>db.list(c.owner,'memory').filter(m=>(!m.workspace||m.workspace===a.workspace)&&m.text.toLowerCase().includes(a.query.toLowerCase())).slice(0,10)});

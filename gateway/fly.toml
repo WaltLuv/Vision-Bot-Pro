@@ -1,9 +1,11 @@
 # VisionClaw gateway, hosted so the app no longer depends on a machine at home.
 #
 #   fly apps create visionclaw-gateway
-#   fly volumes create gateway_data --size 1 --region sjc -a visionclaw-gateway
+#   fly volumes create gateway_data --size 5 --region sjc -a visionclaw-gateway
 #   fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_SECRET=... \
-#                   STATE_SECRET=... GATEWAY_TOKENS=... -a visionclaw-gateway
+#                   STATE_SECRET=... SIGNIN_VAULT_KEY=... GATEWAY_TOKENS=... -a visionclaw-gateway
+#   (SIGNIN_VAULT_KEY: openssl rand -hex 32. It encrypts saved retailer sign-ins on
+#    the volume; changing it forgets them. Hermes is in the image: see Dockerfile.)
 #   fly deploy --config gateway/fly.toml --dockerfile Dockerfile .
 #   fly certs add api.visionagents.app -a visionclaw-gateway
 #
@@ -60,10 +62,17 @@ primary_region = 'sjc'
     method = 'GET'
     path = '/health'
 
+# 5 GB on the machine's NVMe: the SQLite database and cache, artifacts, per-owner
+# Hermes homes and the encrypted sign-in vault. initial_size only applies when
+# Fly creates the volume itself; one made by hand above is made at 5 GB there.
 [[mounts]]
   source = 'gateway_data'
   destination = '/data'
+  initial_size = '5gb'
 
+# Two shared CPUs: Node serves the app while Hermes runs tasks in Python beside
+# it. 2 GB, because one Hermes process per running task plus Playwright's CDP
+# connections to Browserbase do not fit the 512 MB default of this size.
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '512mb'
+  size = 'shared-cpu-2x'
+  memory = '2gb'

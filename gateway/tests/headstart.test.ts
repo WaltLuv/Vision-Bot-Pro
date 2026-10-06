@@ -101,7 +101,7 @@ test('a web task gets its live browser and a quick search at once, before the em
 
 test('the head start respects the owner: no browser when they said never, and saved sign-ins only when they said always',{skip,timeout:120000},async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'vc-hs2-')),remote=await chromium(dir),api=await browserbaseApi(remote.ws);
- const restore=env({BROWSERBASE_API_KEY:'fixture-browserbase-key-0123456789',BROWSERBASE_API_BASE:api.url,SEARCH_API_KEY:undefined,GEMINI_API_KEY:undefined,GOOGLE_API_KEY:undefined,TYPESAFE_API_KEY:undefined});
+ const restore=env({BROWSERBASE_API_KEY:'fixture-browserbase-key-0123456789',BROWSERBASE_API_BASE:api.url,SEARCH_API_KEY:undefined,GEMINI_API_KEY:undefined,GOOGLE_API_KEY:undefined,TYPESAFE_API_KEY:undefined,EMPLOYEE_DATA_DIR:dir,SIGNIN_VAULT_KEY:'v'.repeat(40)});
  const db=new Store(':memory:'),bb=new BrowserbaseBrowsers(db),head=new HeadStart(db,bb);const q=new RunQueue(db,async()=>({result:'x'}));q.onCreated=(o,r)=>head.begin(o,r);
  t.after(async()=>{for(const o of ['alice','bob'])for(const c of db.list(o,'computer'))await bb.release(o,c.id,'closed').catch(()=>{});db.close();api.close();await stop(remote.proc);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});restore();});
  db.put('alice','policy',{id:'p-a',tool:'browser_open',policy:'never'});
@@ -109,10 +109,10 @@ test('the head start respects the owner: no browser when they said never, and sa
  assert.equal(db.list('alice','computer').length,0);assert.equal(api.created.length,0);
  db.put('bob','policy',{id:'p-b',tool:'browser_open',policy:'allow'});
  const b=q.create('bob',{task:'Check the status of my order on Amazon'},'k2');await head.ready(b.id,30000);
- assert.equal(db.list('bob','computer')[0]!.session,'account');assert.equal(api.contexts.length,1);assert.deepEqual(api.created[0].browserSettings,{context:{id:'ctx-1',persist:true}});
+ assert.equal(db.list('bob','computer')[0]!.session,'account');
  q.cancel('bob',b.id);await new BrowserCapability(db,bb).cleanup();assert.equal(api.released.length,1,'a stopped task\'s browser closes at once, not after the linger');
  const c=q.create('bob',{task:'Find prices for drywall at Home Depot'},'k3');await head.ready(c.id,30000);
- assert.equal(api.created.at(-1).browserSettings,undefined,'a guest browser carries no sign-ins');
+ assert.equal(db.list('bob','computer').at(0)!.session,'guest','a guest browser carries no sign-ins');
  // A task stopped before its browser was needed opens nothing more.
  const d=q.create('bob',{task:'Find prices for tile at Lowe\'s'},'k4');q.cancel('bob',d.id);await head.ready(d.id,5000);
  assert.ok(!db.list('bob','computer').some(x=>x.runId===d.id&&x.status==='working'));
