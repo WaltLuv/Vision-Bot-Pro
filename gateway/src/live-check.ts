@@ -1,4 +1,8 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import {fileURLToPath} from "node:url";
+// The server's settings: gateway/.env (deploy/local.sh) or the repository's .env (deploy/install.sh).
+dotenv.config({quiet: true});
+dotenv.config({path: fileURLToPath(new URL("../../.env", import.meta.url)), quiet: true});
 import {Store} from "./employee/db.js";
 import {ToolGateway} from "./employee/tools.js";
 import {BrowserbaseBrowsers, browserbaseEnabled, jevBrowserEnabled} from "./employee/browserbase.js";
