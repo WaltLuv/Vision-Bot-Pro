@@ -14,7 +14,6 @@ import {employee} from './ui/employee';
 import {settings} from './ui/settings';
 import {routines} from './ui/routines';
 import {appNeededBanner} from './ui/connectors';
-import {camera} from './ui/camera';
 import {updateLive, watchBrowser} from './ui/live';
 
 const root = document.getElementById('app')!;
@@ -73,12 +72,11 @@ const TABS: {id: Tab; label: string}[] = [
   {id: 'tasks', label: 'Tasks'},
   {id: 'routines', label: 'Routines'},
   {id: 'employee', label: 'Employee'},
-  {id: 'camera', label: 'Camera'},
   {id: 'settings', label: 'Settings'},
 ];
 
 function shell(): HTMLElement {
-  const screen = ctx.tab === 'tasks' ? tasks(ctx) : ctx.tab === 'routines' ? routines(ctx) : ctx.tab === 'employee' ? employee(ctx) : ctx.tab === 'camera' ? camera(ctx) : ctx.tab === 'settings' ? settings(ctx) : today(ctx);
+  const screen = ctx.tab === 'tasks' ? tasks(ctx) : ctx.tab === 'routines' ? routines(ctx) : ctx.tab === 'employee' ? employee(ctx) : ctx.tab === 'settings' ? settings(ctx) : today(ctx);
   return h('div', {class: 'app'},
     !ctx.streamOnline ? h('div', {class: 'banner', role: 'status', text: 'Offline — reconnecting…'}) : null,
     h('main', {class: 'main'}, appNeededBanner(ctx), screen),

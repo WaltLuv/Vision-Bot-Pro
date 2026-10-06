@@ -125,6 +125,15 @@ export function today(ctx: Ctx): HTMLElement {
     });
   }
   const submit = h('button', {class: 'primary', disabled: ctx.busy, onclick: () => {dictation?.stop(); if (ctx.busy || !composer.value.trim()) return; const v = composer.value; composer.value = ''; draft = ''; spoken = ''; listeningNote = ''; heard.textContent = ''; void send(v);}}, ctx.busy ? 'Sending…' : 'Send');
+  // With the camera on, what is typed or spoken can go with a photo of what it shows: "is this the right
+  // cartridge?" is about the picture, and sent on its own the employee would be asked about a photo it never got.
+  const askPhoto = ctx.camera.running ? h('button', {class: 'ghost', disabled: ctx.busy, onclick: async () => {
+    dictation?.stop();
+    const v = composer.value.trim();
+    if (ctx.busy) return;
+    if (!v) {ctx.toast('Type or say what you want to know first.'); return;}
+    if (await askAboutPhoto(ctx, v)) {draft = ''; spoken = ''; listeningNote = ''; const live = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask or assign something"]'); if (live) live.value = ''; ctx.rerender();}
+  }}, '📷 Ask about this photo') : null;
   composer.addEventListener('keydown', e => {
     // Enter sends, Shift+Enter makes a new line -- on a phone keyboard the
     // send key is the fast path and a newline is the rare one.
@@ -141,11 +150,11 @@ export function today(ctx: Ctx): HTMLElement {
     run ? runPanel(ctx, run) : null,
     transcriptPanel(ctx),
     h('section', {class: 'card'},
-      h('h3', {text: 'Type instead'}),
+      h('h3', {text: ctx.camera.running ? 'Ask or assign' : 'Type instead'}),
       composer,
-      h('div', {class: 'row wrap'}, submit, mic),
+      h('div', {class: 'row wrap'}, submit, askPhoto, mic),
       heard,
-      h('p', {class: 'note', text: 'Typing works whether or not the camera or microphone are on.'}),
+      h('p', {class: 'note', text: ctx.camera.running ? 'Send hands over the task. Ask about this photo sends it with a picture of what the camera shows.' : 'Typing works whether or not the camera or microphone are on.'}),
     ),
     recent(ctx),
   );
@@ -153,8 +162,8 @@ export function today(ctx: Ctx): HTMLElement {
 
 export function cameraSection(ctx: Ctx, send: (task: string, visual?: string) => Promise<void>): HTMLElement {
   const cam = ctx.camera.state;
-  // Here, not in the Today screen: the Camera tab shows this same panel, and a
-  // camera started there was never shown or captured (a black preview).
+  // Attached here, where the panel is built, so a camera started from any screen that shows the panel is
+  // shown and captured (attaching it elsewhere once left a black preview).
   if (preview.srcObject !== cam.stream) preview.srcObject = cam.stream;
   // A screen without the camera takes the preview out of the page, and the
   // browser pauses it. Put back, it stayed on that old frame, and a photo taken

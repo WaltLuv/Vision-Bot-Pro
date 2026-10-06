@@ -2,7 +2,7 @@ import type {AppConnection, Connections, State} from '../api';
 import type {Camera} from '../camera';
 import type {Card, RealtimeSession, SessionState, TranscriptEntry} from '../realtime';
 
-export type Tab = 'today' | 'tasks' | 'routines' | 'employee' | 'camera' | 'settings';
+export type Tab = 'today' | 'tasks' | 'routines' | 'employee' | 'settings';
 
 export interface Ctx {
   state: State;

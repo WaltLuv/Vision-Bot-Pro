@@ -267,14 +267,14 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
   });
 
   await check(p, 'the camera starts, freezes, and a photo goes with a question', async () => {
-    await tab(p, 'Camera');
+    await tab(p, 'Today');
     await p.getByRole('button', {name: 'Start camera'}).click();
     await p.waitForFunction(() => {const v = document.querySelector('video.preview'); return !!v && v.videoWidth > 0;}, null, {timeout: 10000});
     await p.getByRole('button', {name: 'Freeze frame'}).click();
     await until(p, 'Frozen.');
     await p.getByRole('button', {name: 'Unfreeze'}).click();
-    await p.getByLabel('What do you want to know about this?').fill('What is this bracket made of?');
-    await p.getByRole('button', {name: 'Ask about this'}).click();
+    await p.getByLabel('Ask or assign something').fill('What is this bracket made of?');
+    await p.getByRole('button', {name: 'Ask about this photo'}).click();
     await until(p, 'Photo sent.');
     await tab(p, 'Tasks');
     const card = p.locator('section.card').filter({has: p.getByRole('heading', {name: 'What is this bracket made of?'})});
@@ -291,7 +291,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
     const png = Buffer.from((await p.evaluate(() => {const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.fillStyle = '#ff0000'; x.fillRect(0, 0, 64, 64); return c.toDataURL('image/png');})).split(',')[1], 'base64');
     await p.locator('.preview-label input[type=file]').setInputFiles({name: 'mine.png', mimeType: 'image/png', buffer: png});
     await until(p, 'The camera now shows your photo');
-    await tab(p, 'Camera');
+    await tab(p, 'Today');
     await p.waitForTimeout(400);
     const [r, g, b] = await p.evaluate(() => {
       const v = document.querySelector('video.preview'); const c = document.createElement('canvas'); c.width = 8; c.height = 8;
@@ -353,7 +353,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
 
   await check(p, 'fits a 320px phone without sideways scrolling', async () => {
     await p.setViewportSize({width: 320, height: 700});
-    for (const name of ['Today', 'Tasks', 'Employee', 'Camera', 'Settings']) {
+    for (const name of ['Today', 'Tasks', 'Routines', 'Employee', 'Settings']) {
       await tab(p, name);
       await p.waitForTimeout(200);
       const wide = await p.evaluate(() => document.documentElement.scrollWidth);
@@ -431,7 +431,7 @@ const rows = async card => (await card.locator('dl.terms').innerText()).replace(
   });
 
   await check(p, 'a photo is passed to Claude with the question', async () => {
-    await tab(p, 'Camera');
+    await tab(p, 'Today');
     await p.getByRole('button', {name: 'Start camera'}).click();
     await p.waitForFunction(() => (document.querySelector('video.preview')?.videoWidth ?? 0) > 0, null, {timeout: 10000});
     await p.getByRole('button', {name: 'Send photo'}).click();

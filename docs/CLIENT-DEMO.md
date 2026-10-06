@@ -45,7 +45,8 @@ send them to my tasks."* That becomes a task that keeps running while you keep
 talking.
 
 Needs: Gemini (with credit) and LiveKit. Without voice, type the same into
-"Ask about what you see" on the Camera screen: the photo goes with it.
+the question on Today with the camera on and tap "Ask about this photo": the
+photo goes with it.
 
 ### 2. Faster purchasing: comparisons without visiting every site
 
